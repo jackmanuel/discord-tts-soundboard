@@ -49,8 +49,8 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
     OPENROUTER_API_KEY="your_openrouter_api_key"
     UVICORN_PATH="C:\\path\\to\\your\\OpenVoice_server\\.venv\\Scripts\\uvicorn.exe"
     SERVER_DIR="C:\\path\\to\\your\\OpenVoice_server"
-    OPENROUTER_MODEL="deepseek/deepseek-v3.2-exp"
-    TTS_VOICE="jenna_voice_sample"
+    OPENROUTER_MODEL="lab/model-name"
+    TTS_VOICE="demo_speaker0"
     TTS_ACCENT="en-us"
     TTS_SPEED="1.0"
     ```
