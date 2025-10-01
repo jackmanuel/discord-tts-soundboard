@@ -1,0 +1,15 @@
+user_map.json
+.env
+
+# Audio files
+*.wav
+*.opus
+
+# Folders
+audio_cache/
+other_audio_files/
+soundboard/*
+!soundboard/.gitkeep
+
+# Configuration
+system_prompt.txt
