@@ -13,3 +13,6 @@ soundboard/*
 
 # Configuration
 system_prompt.txt
+
+# Startup script
+start_tts_bot.bat

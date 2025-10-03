@@ -7,6 +7,8 @@ import requests
 from dotenv import load_dotenv
 import subprocess
 import socket
+import tempfile
+import argparse
 
 import hashlib
 
@@ -30,6 +32,14 @@ def start_server():
     ]
     print("Starting TTS server...")
     subprocess.Popen(command, cwd=server_dir)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="TTS Discord Bot")
+    parser.add_argument("--no-tts", action="store_true",
+                        help="Run the bot without starting the TTS server")
+    return parser.parse_args()
+
+args = parse_args()
 
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -108,18 +118,21 @@ async def audio_worker():
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
-
-    if not is_server_running("127.0.0.1", 8080):
-        start_server()
-        print("Waiting for TTS server to start...")
-        for _ in range(6):  # Try to connect for 30 seconds
-            if is_server_running("127.0.0.1", 8080):
-                print("TTS server started.")
-                break
-            await asyncio.sleep(5)
-        else:
-            print("TTS server did not start in time.")
-            # You might want to add further error handling here
+    
+    if not args.no_tts:
+        if not is_server_running("127.0.0.1", 8080):
+            start_server()
+            print("Waiting for TTS server to start...")
+            for _ in range(6):  # Try to connect for 30 seconds
+                if is_server_running("127.0.0.1", 8080):
+                    print("TTS server started.")
+                    break
+                await asyncio.sleep(5)
+            else:
+                print("TTS server did not start in time.")
+                # You might want to add further error handling here
+    else:
+        print("Running without TTS server (no-tts mode enabled)")
 
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
@@ -145,6 +158,10 @@ import json
 async def ask(ctx, *, text: str):
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
+        return
+    
+    if args.no_tts:
+        await ctx.send("Error: Bot currently has TTS disabled.")
         return
 
     if not os.path.exists("system_prompt.txt"):
@@ -233,6 +250,10 @@ async def say(ctx, *, text: str):
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
         return
+    
+    if args.no_tts:
+        await ctx.send("Error: Bot currently has TTS disabled.")
+        return
 
     await request_queue.put((ctx, text))
     await ctx.send(f"Added to queue: '{text}'")
@@ -245,5 +266,109 @@ async def stop(ctx):
         await ctx.send("Audio stopped.")
     else:
         await ctx.send("No audio is currently playing.")
+
+@bot.command(name="upload", aliases=["addsound"])
+async def upload_sound(ctx, name: str = None):
+    if not name:
+        await ctx.send("Please provide a name for the sound. Usage: `!upload soundname`")
+        return
+    
+    if not ctx.message.attachments:
+        await ctx.send("Please attach an audio file with your command.")
+        return
+    
+    # Check if sound already exists
+    soundboard_dir = "soundboard"
+    output_path = os.path.join(soundboard_dir, f"{name}.opus")
+    if os.path.exists(output_path):
+        await ctx.send(f"A sound with the name '{name}' already exists.")
+        return
+    
+    attachment = ctx.message.attachments[0]
+    
+    # Check file size
+    if attachment.size > 3 * 1024 * 1024:  # 3MB
+        await ctx.send("File is too large. Please keep it under 3MB.")
+        return
+    
+    # Get file extension
+    filename = attachment.filename.lower()
+    if not (filename.endswith('.mp3') or filename.endswith('.wav') or filename.endswith('.opus')):
+        await ctx.send("Invalid file type. Please upload .mp3, .wav, or .opus files only.")
+        return
+    
+    try:
+        # Create soundboard directory if it doesn't exist
+        if not os.path.exists(soundboard_dir):
+            os.makedirs(soundboard_dir)
+        
+        # Download the file to a temporary location
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+            await attachment.save(temp_file.name)
+            temp_path = temp_file.name
+        
+        # Convert to opus if needed
+        if filename.endswith('.opus'):
+            import shutil
+            shutil.move(temp_path, output_path)
+        else:
+            # Convert mp3/wav to opus using ffmpeg
+            try:
+                command = [
+                    'ffmpeg',
+                    '-i', temp_path,
+                    '-c:a', 'libopus',
+                    output_path
+                ]
+                subprocess.run(command, check=True, capture_output=True)
+                os.unlink(temp_path)  # Remove temp file
+            except subprocess.CalledProcessError as e:
+                await ctx.send(f"Error converting file: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+                os.unlink(temp_path)  # Clean up temp file
+                return
+        
+        await ctx.send(f"Sound '{name}' added to soundboard successfully!")
+        
+    except Exception as e:
+        await ctx.send(f"An error occurred while processing the file: {e}")
+        # Clean up temp file if it exists
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+@bot.command(name="listsounds", aliases=["ls"])
+async def list_sounds(ctx):
+    soundboard_dir = "soundboard"
+    try:
+        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
+    except FileNotFoundError:
+        await ctx.send("Soundboard directory not found.")
+        return
+    
+    if not available_sounds:
+        await ctx.send("No sounds available in the soundboard.")
+        return
+    
+    sounds_list = ", ".join(available_sounds)
+    await ctx.send(f"Available sounds: {sounds_list}")
+
+@bot.command(name="deletesound", aliases=["rmsound"])
+async def delete_sound(ctx, name: str):
+    # Check if user has permission to delete sounds (you might want to add role checks)
+    if not ctx.author.guild_permissions.administrator:
+        await ctx.send("You need administrator permissions to delete sounds.")
+        return
+    
+    soundboard_dir = "soundboard"
+    sound_path = os.path.join(soundboard_dir, f"{name}.opus")
+    
+    if not os.path.exists(sound_path):
+        await ctx.send(f"Sound '{name}' not found.")
+        return
+    
+    try:
+        os.remove(sound_path)
+        await ctx.send(f"Sound '{name}' deleted successfully.")
+    except Exception as e:
+        await ctx.send(f"An error occurred while deleting the sound: {e}")
 
 bot.run(DISCORD_TOKEN)

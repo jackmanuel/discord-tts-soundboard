@@ -71,6 +71,13 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
     python bot.py
     ```
 
-2.  **Invite the bot** to your Discord server.
+2.  **Run the bot without starting the TTS server (for testing):**
+    ```bash
+    python bot.py --no-tts
+    ```
+    
+    When running with the `--no-tts` flag, the bot will not attempt to start the TTS server and TTS-related commands (`%say` and `%ask`) will be disabled.
 
-3.  **Use the commands** in a text channel while connected to a voice channel.
+3.  **Invite the bot** to your Discord server.
+
+4.  **Use the commands** in a text channel while connected to a voice channel.
