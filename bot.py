@@ -1,4 +1,3 @@
-
 import discord
 from discord.ext import commands
 import os
@@ -154,7 +153,7 @@ def fetch_and_cache_audio(text, output_filename):
 
 import json
 
-@bot.command(name="ask")
+@bot.command(name="ask", help="Ask a question to the LLM and get a spoken response. Usage: %ask <your question>")
 async def ask(ctx, *, text: str):
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
@@ -206,7 +205,7 @@ async def ask(ctx, *, text: str):
     except Exception as e:
         await ctx.send(f"An error occurred: {e}")
 
-@bot.command(name="soundboard", aliases=["sb"])
+@bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %soundboard <sound_name> or %sb <sound_name>")
 async def soundboard(ctx, name: str):
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
@@ -245,7 +244,7 @@ async def soundboard(ctx, name: str):
     except Exception as e:
         await ctx.send(f"An error occurred: {e}")
 
-@bot.command(name="say")
+@bot.command(name="say", help="Convert text to speech and play it in the voice channel. Usage: %say <text>")
 async def say(ctx, *, text: str):
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
@@ -258,7 +257,7 @@ async def say(ctx, *, text: str):
     await request_queue.put((ctx, text))
     await ctx.send(f"Added to queue: '{text}'")
 
-@bot.command(name="stop")
+@bot.command(name="stop", help="Stop the currently playing audio. Usage: %stop")
 async def stop(ctx):
     global voice_client
     if voice_client and voice_client.is_connected() and voice_client.is_playing():
@@ -267,7 +266,7 @@ async def stop(ctx):
     else:
         await ctx.send("No audio is currently playing.")
 
-@bot.command(name="upload", aliases=["addsound"])
+@bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <sound_name> or %upload <sound_name>")
 async def upload_sound(ctx, name: str = None):
     if not name:
         await ctx.send("Please provide a name for the sound. Usage: `!upload soundname`")
@@ -321,10 +320,10 @@ async def upload_sound(ctx, name: str = None):
                     output_path
                 ]
                 subprocess.run(command, check=True, capture_output=True)
-                os.unlink(temp_path)  # Remove temp file
+                os.unlink(temp_path)
             except subprocess.CalledProcessError as e:
                 await ctx.send(f"Error converting file: {e.stderr.decode() if e.stderr else 'Unknown error'}")
-                os.unlink(temp_path)  # Clean up temp file
+                os.unlink(temp_path)
                 return
         
         await ctx.send(f"Sound '{name}' added to soundboard successfully!")
@@ -335,7 +334,7 @@ async def upload_sound(ctx, name: str = None):
         if 'temp_path' in locals() and os.path.exists(temp_path):
             os.unlink(temp_path)
 
-@bot.command(name="listsounds", aliases=["ls"])
+@bot.command(name="listsounds", aliases=["ls"], help="List all available sounds in the soundboard. Usage: %listsounds or %ls")
 async def list_sounds(ctx):
     soundboard_dir = "soundboard"
     try:
@@ -351,9 +350,8 @@ async def list_sounds(ctx):
     sounds_list = ", ".join(available_sounds)
     await ctx.send(f"Available sounds: {sounds_list}")
 
-@bot.command(name="deletesound", aliases=["rmsound"])
+@bot.command(name="deletesound", aliases=["rmsound"], help="Delete a sound from the soundboard (admin only). Usage: %deletesound <sound_name> or %rmsound <sound_name>")
 async def delete_sound(ctx, name: str):
-    # Check if user has permission to delete sounds (you might want to add role checks)
     if not ctx.author.guild_permissions.administrator:
         await ctx.send("You need administrator permissions to delete sounds.")
         return

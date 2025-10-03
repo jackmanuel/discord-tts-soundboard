@@ -7,6 +7,10 @@ This is a Discord bot that uses Text-to-Speech to read messages in a voice chann
 - **`%say <text>`**: Synthesizes speech from the provided text and plays it in the user's current voice channel.
 - **`%ask <text>`**: Sends a query to an LLM via OpenRouter and speaks the response in the voice channel.
 - **`%soundboard <sound_name>` or `%sb <sound_name>`**: Plays a pre-configured sound from the `soundboard` directory.
+- **`%addsound <sound_name>` or `%upload <sound_name>`**: Uploads a new sound to the soundboard. Attach an audio file (.mp3, .wav, or .opus) with the command.
+- **`%listsounds` or `%ls`**: Lists all available sounds in the soundboard.
+- **`%deletesound <sound_name>` or `%rmsound <sound_name>`**: Deletes a sound from the soundboard (admin only).
+- **`%stop`**: Stops the currently playing audio.
 - **Audio Caching**: Caches generated TTS audio files to provide instant responses for previously synthesized text.
 - **Automatic Server Startup**: Checks if the required TTS server is running and starts it automatically if it's not detected.
 
@@ -81,3 +85,14 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
 3.  **Invite the bot** to your Discord server.
 
 4.  **Use the commands** in a text channel while connected to a voice channel.
+
+### Soundboard Management
+
+The bot includes a soundboard feature that allows you to upload, play, and manage custom sounds:
+
+- **Uploading Sounds**: Use `%addsound <name>` or `%upload <name>` with an attached audio file to add new sounds to the soundboard. Supported formats are .mp3, .wav, and .opus. Files are automatically converted to .opus format for optimal performance.
+- **Playing Sounds**: Use `%soundboard <name>` or `%sb <name>` to play a sound from the soundboard.
+- **Listing Sounds**: Use `%listsounds` or `%ls` to see all available sounds.
+- **Deleting Sounds**: Use `%deletesound <name>` or `%rmsound <name>` to remove a sound (requires administrator permissions).
+
+All sounds are stored in the `soundboard` directory in .opus format.
