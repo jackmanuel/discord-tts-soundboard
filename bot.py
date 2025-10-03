@@ -59,6 +59,7 @@ bot = commands.Bot(command_prefix="%", intents=intents)
 voice_client = None
 disconnect_timer = None
 request_queue = asyncio.Queue()
+user_sounds = {}  # Dictionary to store user sound preferences: {user_id: {"join": sound_name, "leave": sound_name}}
 
 async def disconnect_voice():
     global voice_client, disconnect_timer
@@ -105,9 +106,9 @@ async def audio_worker():
             while voice_client.is_playing():
                 await asyncio.sleep(1)
 
-            # Start a new timer
+            # Start a new timer (10 minutes)
             loop = asyncio.get_event_loop()
-            disconnect_timer = loop.call_later(20 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
+            disconnect_timer = loop.call_later(10 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
 
             await ctx.send(f"Played: '{text}'")
 
@@ -135,6 +136,10 @@ async def on_ready():
 
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
+    
+    # Load user sound preferences if file exists
+    load_user_sounds()
+    
     bot.loop.create_task(audio_worker())
 
 def fetch_and_cache_audio(text, output_filename):
@@ -150,6 +155,25 @@ def fetch_and_cache_audio(text, output_filename):
 
     with open(output_filename, "wb") as f:
         f.write(response.content)
+
+def load_user_sounds():
+    """Load user sound preferences from file"""
+    global user_sounds
+    try:
+        if os.path.exists("user_sounds.json"):
+            with open("user_sounds.json", "r") as f:
+                user_sounds = json.load(f)
+    except Exception as e:
+        print(f"Error loading user sounds: {e}")
+        user_sounds = {}
+
+def save_user_sounds():
+    """Save user sound preferences to file"""
+    try:
+        with open("user_sounds.json", "w") as f:
+            json.dump(user_sounds, f)
+    except Exception as e:
+        print(f"Error saving user sounds: {e}")
 
 import json
 
@@ -269,14 +293,10 @@ async def stop(ctx):
     else:
         await ctx.send("No audio is currently playing.")
 
-@bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <sound_name> or %upload <sound_name>")
-async def upload_sound(ctx, name: str = None):
+@bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <name> [url] or %upload <name> [url]")
+async def upload_sound(ctx, name: str = None, url: str = None):
     if not name:
-        await ctx.send("Please provide a name for the sound. Usage: `!upload soundname`")
-        return
-    
-    if not ctx.message.attachments:
-        await ctx.send("Please attach an audio file with your command.")
+        await ctx.send("Please provide a name for the sound. Usage: `%addsound <name> [url]`")
         return
     
     # Check if sound already exists
@@ -286,28 +306,86 @@ async def upload_sound(ctx, name: str = None):
         await ctx.send(f"A sound with the name '{name}' already exists.")
         return
     
-    attachment = ctx.message.attachments[0]
+    # Determine if we're using an attachment or URL
+    has_attachment = len(ctx.message.attachments) > 0
+    has_url = url is not None
     
-    # Check file size
-    if attachment.size > 3 * 1024 * 1024:  # 3MB
-        await ctx.send("File is too large. Please keep it under 3MB.")
+    if not has_attachment and not has_url:
+        await ctx.send("Please either attach an audio file or provide a URL with your command.")
         return
     
-    # Get file extension
-    filename = attachment.filename.lower()
-    if not (filename.endswith('.mp3') or filename.endswith('.wav') or filename.endswith('.opus')):
-        await ctx.send("Invalid file type. Please upload .mp3, .wav, or .opus files only.")
+    if has_attachment and has_url:
+        await ctx.send("Please provide either an attachment or a URL, not both.")
         return
+    
+    temp_path = None
+    filename = None
     
     try:
         # Create soundboard directory if it doesn't exist
         if not os.path.exists(soundboard_dir):
             os.makedirs(soundboard_dir)
         
-        # Download the file to a temporary location
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
-            await attachment.save(temp_file.name)
-            temp_path = temp_file.name
+        if has_attachment:
+            # Handle file attachment
+            attachment = ctx.message.attachments[0]
+            
+            # Check file size
+            if attachment.size > 3 * 1024 * 1024:  # 3MB
+                await ctx.send("File is too large. Please keep it under 3MB.")
+                return
+            
+            # Get file extension
+            filename = attachment.filename.lower()
+            if not (filename.endswith('.mp3') or filename.endswith('.wav') or filename.endswith('.opus')):
+                await ctx.send("Invalid file type. Please upload .mp3, .wav, or .opus files only.")
+                return
+            
+            # Download the file to a temporary location
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+                await attachment.save(temp_file.name)
+                temp_path = temp_file.name
+        
+        else:  # has_url
+            # Handle URL
+            # Validate URL format
+            if not (url.startswith('http://') or url.startswith('https://')):
+                await ctx.send("Invalid URL format. Please provide a valid HTTP or HTTPS URL.")
+                return
+            
+            # Get file extension from URL or default to .mp3
+            url_lower = url.lower()
+            if url_lower.endswith('.mp3'):
+                filename = "temp.mp3"
+            elif url_lower.endswith('.wav'):
+                filename = "temp.wav"
+            elif url_lower.endswith('.opus'):
+                filename = "temp.opus"
+            else:
+                # Default to mp3 if we can't determine the extension
+                filename = "temp.mp3"
+            
+            # Download the file from URL
+            try:
+                response = requests.get(url, stream=True)
+                response.raise_for_status()
+                
+                # Check content-length if available
+                content_length = response.headers.get('content-length')
+                if content_length and int(content_length) > 3 * 1024 * 1024:  # 3MB
+                    await ctx.send("File is too large. Please keep it under 3MB.")
+                    return
+                
+                # Save to temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
+                    temp_path = temp_file.name
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:  # filter out keep-alive new chunks
+                            temp_file.write(chunk)
+                
+            except requests.exceptions.RequestException as e:
+                await ctx.send(f"Error downloading file from URL: {e}")
+                return
         
         # Convert to opus if needed
         if filename.endswith('.opus'):
@@ -323,10 +401,12 @@ async def upload_sound(ctx, name: str = None):
                     output_path
                 ]
                 subprocess.run(command, check=True, capture_output=True)
-                os.unlink(temp_path)
+                if temp_path:
+                    os.unlink(temp_path)
             except subprocess.CalledProcessError as e:
                 await ctx.send(f"Error converting file: {e.stderr.decode() if e.stderr else 'Unknown error'}")
-                os.unlink(temp_path)
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
                 return
         
         await ctx.send(f"Sound '{name}' added to soundboard successfully!")
@@ -334,7 +414,7 @@ async def upload_sound(ctx, name: str = None):
     except Exception as e:
         await ctx.send(f"An error occurred while processing the file: {e}")
         # Clean up temp file if it exists
-        if 'temp_path' in locals() and os.path.exists(temp_path):
+        if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
 
 @bot.command(name="listsounds", aliases=["ls"], help="List all available sounds in the soundboard. Usage: %listsounds or %ls")
@@ -371,5 +451,146 @@ async def delete_sound(ctx, name: str):
         await ctx.send(f"Sound '{name}' deleted successfully.")
     except Exception as e:
         await ctx.send(f"An error occurred while deleting the sound: {e}")
+
+@bot.command(name="setjoinsound", help="Set a sound to play when you join a voice channel. Usage: %setjoinsound <sound_name>")
+async def set_join_sound(ctx, name: str = None):
+    if not name:
+        await ctx.send("Please provide a sound name. Usage: `%setjoinsound <sound_name>`")
+        return
+    
+    soundboard_dir = "soundboard"
+    try:
+        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
+    except FileNotFoundError:
+        await ctx.send(f"Soundboard directory not found.")
+        return
+    
+    if name not in available_sounds:
+        if len(available_sounds) > 1:
+            sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
+        elif available_sounds:
+            sounds_list = available_sounds[0]
+        else:
+            sounds_list = ""
+        await ctx.send(f"Invalid sound. Choose from: {sounds_list}")
+        return
+    
+    user_id = str(ctx.author.id)
+    if user_id not in user_sounds:
+        user_sounds[user_id] = {}
+    
+    user_sounds[user_id]["join"] = name
+    save_user_sounds()
+    await ctx.send(f"Your join sound has been set to '{name}'")
+
+@bot.command(name="setleavesound", help="Set a sound to play when you leave a voice channel. Usage: %setleavesound <sound_name>")
+async def set_leave_sound(ctx, name: str = None):
+    if not name:
+        await ctx.send("Please provide a sound name. Usage: `%setleavesound <sound_name>`")
+        return
+    
+    soundboard_dir = "soundboard"
+    try:
+        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
+    except FileNotFoundError:
+        await ctx.send(f"Soundboard directory not found.")
+        return
+    
+    if name not in available_sounds:
+        if len(available_sounds) > 1:
+            sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
+        elif available_sounds:
+            sounds_list = available_sounds[0]
+        else:
+            sounds_list = ""
+        await ctx.send(f"Invalid sound. Choose from: {sounds_list}")
+        return
+    
+    user_id = str(ctx.author.id)
+    if user_id not in user_sounds:
+        user_sounds[user_id] = {}
+    
+    user_sounds[user_id]["leave"] = name
+    save_user_sounds()
+    await ctx.send(f"Your leave sound has been set to '{name}'")
+
+@bot.command(name="unsetjoinsound", help="Remove your join sound. Usage: %unsetjoinsound")
+async def unset_join_sound(ctx):
+    user_id = str(ctx.author.id)
+    if user_id in user_sounds and "join" in user_sounds[user_id]:
+        del user_sounds[user_id]["join"]
+        save_user_sounds()
+        await ctx.send("Your join sound has been removed.")
+    else:
+        await ctx.send("You don't have a join sound set.")
+
+@bot.command(name="unsetleavesound", help="Remove your leave sound. Usage: %unsetleavesound")
+async def unset_leave_sound(ctx):
+    user_id = str(ctx.author.id)
+    if user_id in user_sounds and "leave" in user_sounds[user_id]:
+        del user_sounds[user_id]["leave"]
+        save_user_sounds()
+        await ctx.send("Your leave sound has been removed.")
+    else:
+        await ctx.send("You don't have a leave sound set.")
+
+@bot.command(name="mysounds", help="Check your current join and leave sounds. Usage: %mysounds")
+async def my_sounds(ctx):
+    user_id = str(ctx.author.id)
+    if user_id in user_sounds:
+        join_sound = user_sounds[user_id].get("join", "None")
+        leave_sound = user_sounds[user_id].get("leave", "None")
+        await ctx.send(f"Your sounds:\nJoin: {join_sound}\nLeave: {leave_sound}")
+    else:
+        await ctx.send("You don't have any sounds set.")
+
+async def play_user_sound(member, channel, sound_type):
+    """Play a user's join or leave sound"""
+    user_id = str(member.id)
+    if user_id in user_sounds and sound_type in user_sounds[user_id]:
+        sound_name = user_sounds[user_id][sound_type]
+        filepath = os.path.join("soundboard", f"{sound_name}.opus")
+        
+        if os.path.exists(filepath):
+            global voice_client, disconnect_timer
+            try:
+                # Connect to the channel if not already connected
+                if voice_client is None or not voice_client.is_connected():
+                    voice_client = await channel.connect()
+                
+                # Cancel any existing disconnect timer
+                if disconnect_timer:
+                    disconnect_timer.cancel()
+                    disconnect_timer = None
+                
+                # Play the sound
+                voice_client.play(discord.FFmpegPCMAudio(filepath))
+                
+                while voice_client.is_playing():
+                    await asyncio.sleep(0.5)
+                
+                # Set a new disconnect timer for 10 minutes (600 seconds)
+                loop = asyncio.get_event_loop()
+                disconnect_timer = loop.call_later(10 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
+                
+            except Exception as e:
+                print(f"Error playing user sound: {e}")
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    """Handle voice state changes for join/leave sounds"""
+    # Ignore bot's own voice state changes
+    if member.bot:
+        return
+    
+    # User joined a voice channel
+    if before.channel is None and after.channel is not None:
+        # Wait 1 second before playing the join sound to ensure connection is established
+        await asyncio.sleep(1)
+        await play_user_sound(member, after.channel, "join")
+    
+    # User left a voice channel
+    elif before.channel is not None and after.channel is None:
+        await play_user_sound(member, before.channel, "leave")
 
 bot.run(DISCORD_TOKEN)

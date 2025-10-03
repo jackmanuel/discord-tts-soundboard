@@ -10,7 +10,13 @@ This is a Discord bot that uses Text-to-Speech to read messages in a voice chann
 - **`%addsound <sound_name>` or `%upload <sound_name>`**: Uploads a new sound to the soundboard. Attach an audio file (.mp3, .wav, or .opus) with the command.
 - **`%listsounds` or `%ls`**: Lists all available sounds in the soundboard.
 - **`%deletesound <sound_name>` or `%rmsound <sound_name>`**: Deletes a sound from the soundboard (admin only).
+- **`%setjoinsound <sound_name>`**: Sets a sound to play when you join a voice channel.
+- **`%setleavesound <sound_name>`**: Sets a sound to play when you leave a voice channel.
+- **`%unsetjoinsound`**: Removes your join sound.
+- **`%unsetleavesound`**: Removes your leave sound.
+- **`%mysounds`**: Shows your current join and leave sounds.
 - **`%stop`**: Stops the currently playing audio.
+- **Join/Leave Sounds**: Users can set custom sounds that play when they join or leave voice channels.
 - **Audio Caching**: Caches generated TTS audio files to provide instant responses for previously synthesized text.
 - **Automatic Server Startup**: Checks if the required TTS server is running and starts it automatically if it's not detected.
 
@@ -96,3 +102,13 @@ The bot includes a soundboard feature that allows you to upload, play, and manag
 - **Deleting Sounds**: Use `%deletesound <name>` or `%rmsound <name>` to remove a sound (requires administrator permissions).
 
 All sounds are stored in the `soundboard` directory in .opus format.
+
+### Join/Leave Sounds
+
+The bot supports custom join and leave sounds for each user:
+
+- **Setting Sounds**: Use `%setjoinsound <name>` or `%setleavesound <name>` to set a sound that will play when you join or leave a voice channel.
+- **Removing Sounds**: Use `%unsetjoinsound` or `%unsetleavesound` to remove your join or leave sound.
+- **Checking Your Sounds**: Use `%mysounds` to see your currently configured join and leave sounds.
+
+These settings are saved per user and will persist across bot restarts. The sounds are played automatically when you join or leave a voice channel.
