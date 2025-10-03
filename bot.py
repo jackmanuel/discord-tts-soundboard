@@ -206,7 +206,10 @@ async def ask(ctx, *, text: str):
         await ctx.send(f"An error occurred: {e}")
 
 @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %soundboard <sound_name> or %sb <sound_name>")
-async def soundboard(ctx, name: str):
+async def soundboard(ctx, name: str = None):
+    if not name:
+        await ctx.send("Please provide a sound name. Usage: `%sb <sound_name>`")
+        return
     if not ctx.author.voice:
         await ctx.send("You are not connected to a voice channel.")
         return
