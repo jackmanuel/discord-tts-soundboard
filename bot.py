@@ -22,6 +22,19 @@ from dotenv import load_dotenv
 load_dotenv()
 LOG_DIR = os.getenv("LOG_DIR", "logs")
 
+# Set Discord library logger level to capture all discord-related logs
+discord_logger = logging.getLogger('discord')
+discord_logger.setLevel(logging.INFO)
+
+# Get the bot logger's file handler and add it to the Discord logger
+# This ensures Discord logs go to the same file as bot logs
+if bot_logger.handlers:
+    for handler in bot_logger.handlers:
+        if isinstance(handler, logging.handlers.TimedRotatingFileHandler):
+            discord_logger.addHandler(handler)
+            # Prevent propagation to avoid duplicate logs
+            discord_logger.propagate = False
+
 def is_server_running(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((host, port)) == 0
