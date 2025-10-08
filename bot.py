@@ -13,6 +13,14 @@ import hashlib
 
 import functools
 import json
+import logging
+from datetime import datetime
+from logger_config import bot_logger, tts_server_logger
+from dotenv import load_dotenv
+
+# Load environment variables for logging configuration
+load_dotenv()
+LOG_DIR = os.getenv("LOG_DIR", "logs")
 
 def is_server_running(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -21,6 +29,12 @@ def is_server_running(host, port):
 def start_server():
     server_venv_uvicorn = os.getenv("UVICORN_PATH")
     server_dir = os.getenv("SERVER_DIR")
+    
+    # Create log file path for TTS server
+    log_dir = os.path.join(LOG_DIR, "tts_server")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"tts-server-{datetime.now().strftime('%Y-%m-%d')}.log")
+    
     command = [
         server_venv_uvicorn,
         "openvoice.openvoice_server:app",
@@ -29,8 +43,22 @@ def start_server():
         "--port",
         "8080",
     ]
-    print("Starting TTS server...")
-    subprocess.Popen(command, cwd=server_dir)
+    
+    bot_logger.info("Starting TTS server...")
+    tts_server_logger.info(f"TTS Server command: {' '.join(command)}")
+    
+    # Redirect stdout and stderr to the log file
+    with open(log_file, 'a') as f:
+        process = subprocess.Popen(
+            command,
+            cwd=server_dir,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+    
+    tts_server_logger.info("TTS Server process started")
+    return process
 
 def parse_args():
     parser = argparse.ArgumentParser(description="TTS Discord Bot")
@@ -60,6 +88,7 @@ voice_client = None
 disconnect_timer = None
 request_queue = asyncio.Queue()
 user_sounds = {}  # Dictionary to store user sound preferences: {user_id: {"join": sound_name, "leave": sound_name}}
+last_tts_file = None  # Track the most recent TTS audio file (not soundboard)
 
 async def disconnect_voice():
     global voice_client, disconnect_timer
@@ -69,7 +98,7 @@ async def disconnect_voice():
     disconnect_timer = None
 
 async def audio_worker():
-    global voice_client, disconnect_timer
+    global voice_client, disconnect_timer, last_tts_file
     while True:
         ctx, text = await request_queue.get()
 
@@ -78,7 +107,7 @@ async def audio_worker():
         output_filename = os.path.join(CACHE_DIR, f"{text_hash}.wav")
 
         if os.path.exists(output_filename):
-            print(f"Playing from cache: {output_filename}")
+            bot_logger.info(f"Playing from cache: {output_filename}")
         else:
             loop = asyncio.get_event_loop()
             try:
@@ -101,6 +130,9 @@ async def audio_worker():
             if disconnect_timer:
                 disconnect_timer.cancel()
 
+            # Track the most recent TTS file
+            last_tts_file = output_filename
+
             voice_client.play(discord.FFmpegPCMAudio(output_filename))
 
             while voice_client.is_playing():
@@ -117,22 +149,22 @@ async def audio_worker():
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user.name}')
+    bot_logger.info(f'Logged in as {bot.user.name}')
     
     if not args.no_tts:
         if not is_server_running("127.0.0.1", 8080):
             start_server()
-            print("Waiting for TTS server to start...")
+            bot_logger.info("Waiting for TTS server to start...")
             for _ in range(6):  # Try to connect for 30 seconds
                 if is_server_running("127.0.0.1", 8080):
-                    print("TTS server started.")
+                    bot_logger.info("TTS server started.")
                     break
                 await asyncio.sleep(5)
             else:
-                print("TTS server did not start in time.")
+                bot_logger.error("TTS server did not start in time.")
                 # You might want to add further error handling here
     else:
-        print("Running without TTS server (no-tts mode enabled)")
+        bot_logger.info("Running without TTS server (no-tts mode enabled)")
 
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
@@ -143,7 +175,7 @@ async def on_ready():
     bot.loop.create_task(audio_worker())
 
 def fetch_and_cache_audio(text, output_filename):
-    print(f"Fetching from server: {text}")
+    bot_logger.info(f"Fetching from server: {text}")
     params = {
         "text": text,
         "voice": TTS_VOICE,
@@ -164,7 +196,7 @@ def load_user_sounds():
             with open("user_sounds.json", "r") as f:
                 user_sounds = json.load(f)
     except Exception as e:
-        print(f"Error loading user sounds: {e}")
+        bot_logger.error(f"Error loading user sounds: {e}")
         user_sounds = {}
 
 def save_user_sounds():
@@ -173,7 +205,7 @@ def save_user_sounds():
         with open("user_sounds.json", "w") as f:
             json.dump(user_sounds, f)
     except Exception as e:
-        print(f"Error saving user sounds: {e}")
+        bot_logger.error(f"Error saving user sounds: {e}")
 
 import json
 
@@ -188,7 +220,7 @@ async def ask(ctx, *, text: str):
         return
 
     if not os.path.exists("system_prompt.txt"):
-        print("Warning: system_prompt.txt not found. Proceeding with an empty system prompt.")
+        bot_logger.warning("system_prompt.txt not found. Proceeding with an empty system prompt.")
         system_prompt = ""
     else:
         with open("system_prompt.txt", "r", encoding="utf-8") as f:
@@ -256,19 +288,28 @@ async def soundboard(ctx, name: str = None):
         return
 
     filepath = os.path.join(soundboard_dir, f"{name}.opus")
+    
+    # Log the soundboard play request
+    channel_name = ctx.author.voice.channel.name if ctx.author.voice else "Unknown"
+    bot_logger.info(f"Soundboard: '{name}' requested by {ctx.author.name} ({ctx.author.id}) in channel {channel_name}")
 
     global voice_client
     try:
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
+            bot_logger.info(f"Connecting to voice channel {voice_channel.name} to play soundboard sound")
             voice_client = await voice_channel.connect()
         
+        bot_logger.info(f"Now playing soundboard sound: {filepath}")
         voice_client.play(discord.FFmpegPCMAudio(filepath))
 
         while voice_client.is_playing():
             await asyncio.sleep(1)
+            
+        bot_logger.info(f"Finished playing soundboard sound '{name}' for {ctx.author.name}")
 
     except Exception as e:
+        bot_logger.error(f"Error playing soundboard sound '{name}' for {ctx.author.name}: {e}")
         await ctx.send(f"An error occurred: {e}")
 
 @bot.command(name="say", help="Convert text to speech and play it in the voice channel. Usage: %say <text>")
@@ -347,8 +388,6 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                 temp_path = temp_file.name
         
         else:  # has_url
-            # Handle URL
-            # Validate URL format
             if not (url.startswith('http://') or url.startswith('https://')):
                 await ctx.send("Invalid URL format. Please provide a valid HTTP or HTTPS URL.")
                 return
@@ -544,6 +583,45 @@ async def my_sounds(ctx):
     else:
         await ctx.send("You don't have any sounds set.")
 
+@bot.command(name="replay", aliases=["repeat"], help="Replay the most recently played TTS sound file. Usage: %replay or %repeat")
+async def replay(ctx):
+    global voice_client, disconnect_timer, last_tts_file
+    
+    if not ctx.author.voice:
+        await ctx.send("You are not connected to a voice channel.")
+        return
+    
+    if args.no_tts:
+        await ctx.send("Error: Bot currently has TTS disabled.")
+        return
+    
+    if not last_tts_file or not os.path.exists(last_tts_file):
+        await ctx.send("No TTS audio file has been played yet or the file is no longer available.")
+        return
+    
+    try:
+        if voice_client is None or not voice_client.is_connected():
+            voice_channel = ctx.author.voice.channel
+            voice_client = await voice_channel.connect()
+
+        # If there's a timer, cancel it
+        if disconnect_timer:
+            disconnect_timer.cancel()
+
+        voice_client.play(discord.FFmpegPCMAudio(last_tts_file))
+
+        while voice_client.is_playing():
+            await asyncio.sleep(1)
+
+        # Start a new timer (10 minutes)
+        loop = asyncio.get_event_loop()
+        disconnect_timer = loop.call_later(10 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
+
+        await ctx.send("Replayed the most recent TTS audio.")
+
+    except Exception as e:
+        await ctx.send(f"An error occurred: {e}")
+
 async def play_user_sound(member, channel, sound_type):
     """Play a user's join or leave sound"""
     user_id = str(member.id)
@@ -551,11 +629,16 @@ async def play_user_sound(member, channel, sound_type):
         sound_name = user_sounds[user_id][sound_type]
         filepath = os.path.join("soundboard", f"{sound_name}.opus")
         
+        # Log which user's sound is being played and for what action
+        action = "joining" if sound_type == "join" else "leaving"
+        bot_logger.info(f"Playing '{sound_name}' for user {member.name} ({user_id}) {action} voice channel '{channel.name}'")
+        
         if os.path.exists(filepath):
             global voice_client, disconnect_timer
             try:
                 # Connect to the channel if not already connected
                 if voice_client is None or not voice_client.is_connected():
+                    bot_logger.info(f"Connecting to voice channel {channel.name} to play user sound")
                     voice_client = await channel.connect()
                 
                 # Cancel any existing disconnect timer
@@ -564,17 +647,22 @@ async def play_user_sound(member, channel, sound_type):
                     disconnect_timer = None
                 
                 # Play the sound
+                bot_logger.info(f"Now playing sound file: {filepath}")
                 voice_client.play(discord.FFmpegPCMAudio(filepath))
                 
                 while voice_client.is_playing():
                     await asyncio.sleep(0.5)
+                
+                bot_logger.info(f"Finished playing '{sound_name}' for user {member.name}")
                 
                 # Set a new disconnect timer for 10 minutes (600 seconds)
                 loop = asyncio.get_event_loop()
                 disconnect_timer = loop.call_later(10 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
                 
             except Exception as e:
-                print(f"Error playing user sound: {e}")
+                bot_logger.error(f"Error playing user sound: {e}")
+        else:
+            bot_logger.warning(f"Sound file not found: {filepath}")
 
 @bot.event
 async def on_voice_state_update(member, before, after):

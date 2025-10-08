@@ -1,4 +1,6 @@
+# Personal files
 user_map.json
+user_sounds.json
 .env
 
 # Audio files
@@ -16,3 +18,12 @@ system_prompt.txt
 
 # Startup script
 start_tts_bot.bat
+
+# Logs
+logs/
+
+# Testing
+test_logging.py
+# Python bytecode
+__pycache__/
+*.py[cod]

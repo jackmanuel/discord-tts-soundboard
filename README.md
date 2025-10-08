@@ -9,13 +9,14 @@ This is a Discord bot that uses Text-to-Speech to read messages in a voice chann
 - **`%soundboard <sound_name>` or `%sb <sound_name>`**: Plays a pre-configured sound from the `soundboard` directory.
 - **`%addsound <sound_name>` or `%upload <sound_name>`**: Uploads a new sound to the soundboard. Attach an audio file (.mp3, .wav, or .opus) with the command.
 - **`%listsounds` or `%ls`**: Lists all available sounds in the soundboard.
-- **`%deletesound <sound_name>` or `%rmsound <sound_name>`**: Deletes a sound from the soundboard (admin only).
+- **`%deletesound <sound_name>` or `%rmsound <sound_name>`**: Deletes a sound from the soundboard.
 - **`%setjoinsound <sound_name>`**: Sets a sound to play when you join a voice channel.
 - **`%setleavesound <sound_name>`**: Sets a sound to play when you leave a voice channel.
 - **`%unsetjoinsound`**: Removes your join sound.
 - **`%unsetleavesound`**: Removes your leave sound.
 - **`%mysounds`**: Shows your current join and leave sounds.
 - **`%stop`**: Stops the currently playing audio.
+- **`%replay` or `%repeat`**: Replays the most recently played TTS audio file.
 - **Join/Leave Sounds**: Users can set custom sounds that play when they join or leave voice channels.
 - **Audio Caching**: Caches generated TTS audio files to provide instant responses for previously synthesized text.
 - **Automatic Server Startup**: Checks if the required TTS server is running and starts it automatically if it's not detected.
@@ -63,6 +64,11 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
     TTS_VOICE="demo_speaker0"
     TTS_ACCENT="en-us"
     TTS_SPEED="1.0"
+    
+    # Logging configuration
+    LOG_LEVEL="INFO"
+    LOG_DIR="logs"
+    LOG_RETENTION_DAYS="7"
     ```
 
     - `DISCORD_TOKEN`: Your unique Discord bot token.
@@ -73,6 +79,9 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
     - `TTS_VOICE`: The voice to use for TTS. Defaults to `demo_speaker0`.
     - `TTS_ACCENT`: The accent to use for TTS. Defaults to `en-us`.
     - `TTS_SPEED`: The speed of the TTS. Defaults to `1.0`.
+    - `LOG_LEVEL`: The logging level (DEBUG, INFO, WARNING, ERROR). Defaults to `INFO`.
+    - `LOG_DIR`: Directory where log files will be stored. Defaults to `logs`.
+    - `LOG_RETENTION_DAYS`: Number of days to keep log files. Defaults to `7`.
 
 ## Usage
 
@@ -112,3 +121,7 @@ The bot supports custom join and leave sounds for each user:
 - **Checking Your Sounds**: Use `%mysounds` to see your currently configured join and leave sounds.
 
 These settings are saved per user and will persist across bot restarts. The sounds are played automatically when you join or leave a voice channel.
+
+## Logging
+
+The bot includes configurable logging with daily rotation. Logs are stored in the `logs/` directory and can be configured via the `LOG_LEVEL`, `LOG_DIR`, and `LOG_RETENTION_DAYS` environment variables in your `.env` file.
