@@ -7,7 +7,7 @@ This is a Discord bot that uses Text-to-Speech to read messages in a voice chann
 - **`%say <text>`**: Synthesizes speech from the provided text and plays it in the user's current voice channel.
 - **`%ask <text>`**: Sends a query to an LLM via OpenRouter and speaks the response in the voice channel.
 - **`%soundboard <sound_name>` or `%sb <sound_name>`**: Plays a pre-configured sound from the `soundboard` directory.
-- **`%addsound <sound_name>` or `%upload <sound_name>`**: Uploads a new sound to the soundboard. Attach an audio file (.mp3, .wav, or .opus) with the command.
+- **`%addsound <sound_name> [url]` or `%upload <sound_name> [url]`**: Uploads a new sound to the soundboard. You can either attach an audio file (.mp3, .wav, or .opus) to the command message or provide a URL to an audio file.
 - **`%listsounds` or `%ls`**: Lists all available sounds in the soundboard.
 - **`%deletesound <sound_name>` or `%rmsound <sound_name>`**: Deletes a sound from the soundboard.
 - **`%setjoinsound <sound_name>`**: Sets a sound to play when you join a voice channel.
@@ -105,7 +105,11 @@ The bot is configured to automatically start the OpenVoice server on `http://0.0
 
 The bot includes a soundboard feature that allows you to upload, play, and manage custom sounds:
 
-- **Uploading Sounds**: Use `%addsound <name>` or `%upload <name>` with an attached audio file to add new sounds to the soundboard. Supported formats are .mp3, .wav, and .opus. Files are automatically converted to .opus format for optimal performance.
+- **Uploading Sounds**: Use `%addsound <name> [url]` or `%upload <name> [url]` to add new sounds to the soundboard. You can either:
+  - Attach an audio file (.mp3, .wav, or .opus) to the command message
+  - Provide a URL to an audio file as an additional parameter
+  
+  Supported formats are .mp3, .wav, and .opus. Files are automatically converted to .opus format for optimal performance. Maximum file size is 3MB.
 - **Playing Sounds**: Use `%soundboard <name>` or `%sb <name>` to play a sound from the soundboard.
 - **Listing Sounds**: Use `%listsounds` or `%ls` to see all available sounds.
 - **Deleting Sounds**: Use `%deletesound <name>` or `%rmsound <name>` to remove a sound (requires administrator permissions).
