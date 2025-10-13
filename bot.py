@@ -35,7 +35,13 @@ if bot_logger.handlers:
             # Prevent propagation to avoid duplicate logs
             discord_logger.propagate = False
 
-def is_server_running(host, port):
+# Constants for TTS server startup checking
+TTS_SERVER_HOST = "127.0.0.1"
+TTS_SERVER_PORT = 8080
+TTS_SERVER_CHECK_INTERVAL = 20
+TTS_SERVER_STARTUP_TIMEOUT = 120
+
+def is_server_running(host=TTS_SERVER_HOST, port=TTS_SERVER_PORT):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((host, port)) == 0
 
@@ -165,17 +171,25 @@ async def on_ready():
     bot_logger.info(f'Logged in as {bot.user.name}')
     
     if not args.no_tts:
-        if not is_server_running("127.0.0.1", 8080):
+        if not is_server_running(TTS_SERVER_HOST, TTS_SERVER_PORT):
             start_server()
-            bot_logger.info("Waiting for TTS server to start...")
-            for _ in range(6):  # Try to connect for 30 seconds
-                if is_server_running("127.0.0.1", 8080):
-                    bot_logger.info("TTS server started.")
+            bot_logger.info(f"Waiting for TTS server to start (timeout: {TTS_SERVER_STARTUP_TIMEOUT} seconds)...")
+            
+            # Wait for server to start with a reasonable timeout
+            start_time = asyncio.get_event_loop().time()
+            while not is_server_running(TTS_SERVER_HOST, TTS_SERVER_PORT):
+                elapsed = asyncio.get_event_loop().time() - start_time
+                if elapsed >= TTS_SERVER_STARTUP_TIMEOUT:
+                    bot_logger.error(f"TTS server failed to start within {TTS_SERVER_STARTUP_TIMEOUT} seconds. Disabling TTS functionality.")
+                    args.no_tts = True
                     break
-                await asyncio.sleep(5)
+                
+                bot_logger.info(f"TTS server not ready yet, checking again in {TTS_SERVER_CHECK_INTERVAL} seconds... ({int(TTS_SERVER_STARTUP_TIMEOUT - elapsed)}s remaining)")
+                await asyncio.sleep(TTS_SERVER_CHECK_INTERVAL)
             else:
-                bot_logger.error("TTS server did not start in time.")
-                # You might want to add further error handling here
+                bot_logger.info("TTS server started successfully.")
+        else:
+            bot_logger.info("TTS server is already running.")
     else:
         bot_logger.info("Running without TTS server (no-tts mode enabled)")
 
