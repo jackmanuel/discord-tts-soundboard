@@ -4,19 +4,19 @@ import os
 import asyncio
 import requests
 from dotenv import load_dotenv
-import subprocess
-import socket
 import tempfile
 import argparse
-
 import hashlib
-
 import functools
 import json
 import logging
+import subprocess
 from datetime import datetime
-from logger_config import bot_logger, tts_server_logger
+from logger_config import bot_logger
 from dotenv import load_dotenv
+import soundfile as sf
+import numpy as np
+from kokoro import KPipeline
 
 # Load environment variables for logging configuration
 load_dotenv()
@@ -35,50 +35,6 @@ if bot_logger.handlers:
             # Prevent propagation to avoid duplicate logs
             discord_logger.propagate = False
 
-# Constants for TTS server startup checking
-TTS_SERVER_HOST = "127.0.0.1"
-TTS_SERVER_PORT = 8080
-TTS_SERVER_CHECK_INTERVAL = 20
-TTS_SERVER_STARTUP_TIMEOUT = 120
-
-def is_server_running(host=TTS_SERVER_HOST, port=TTS_SERVER_PORT):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex((host, port)) == 0
-
-def start_server():
-    server_venv_uvicorn = os.getenv("UVICORN_PATH")
-    server_dir = os.getenv("SERVER_DIR")
-    
-    # Create log file path for TTS server
-    log_dir = os.path.join(LOG_DIR, "tts_server")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"tts-server-{datetime.now().strftime('%Y-%m-%d')}.log")
-    
-    command = [
-        server_venv_uvicorn,
-        "openvoice.openvoice_server:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8080",
-    ]
-    
-    bot_logger.info("Starting TTS server...")
-    tts_server_logger.info(f"TTS Server command: {' '.join(command)}")
-    
-    # Redirect stdout and stderr to the log file
-    with open(log_file, 'a') as f:
-        process = subprocess.Popen(
-            command,
-            cwd=server_dir,
-            stdout=f,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-    
-    tts_server_logger.info("TTS Server process started")
-    return process
-
 def parse_args():
     parser = argparse.ArgumentParser(description="TTS Discord Bot")
     parser.add_argument("--no-tts", action="store_true",
@@ -91,11 +47,12 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL")
-TTS_VOICE = os.getenv("TTS_VOICE", "demo_speaker0")
+TTS_VOICE = os.getenv("TTS_VOICE", "af_bella")
 TTS_ACCENT = os.getenv("TTS_ACCENT", "en-us")
 TTS_SPEED = float(os.getenv("TTS_SPEED", 1.0))
-SERVER_URL = "http://localhost:8080/synthesize_speech/"
 CACHE_DIR = "audio_cache"
+
+pipeline = None
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -133,11 +90,8 @@ async def audio_worker():
                 await loop.run_in_executor(
                     None, functools.partial(fetch_and_cache_audio, text, output_filename)
                 )
-            except requests.exceptions.RequestException as e:
-                await ctx.send(f"Error contacting TTS server: {e}")
-                continue
             except Exception as e:
-                await ctx.send(f"An error occurred while fetching audio: {e}")
+                await ctx.send(f"An error occurred while generating audio: {e}")
                 continue
 
         try:
@@ -171,27 +125,22 @@ async def on_ready():
     bot_logger.info(f'Logged in as {bot.user.name}')
     
     if not args.no_tts:
-        if not is_server_running(TTS_SERVER_HOST, TTS_SERVER_PORT):
-            start_server()
-            bot_logger.info(f"Waiting for TTS server to start (timeout: {TTS_SERVER_STARTUP_TIMEOUT} seconds)...")
+        global pipeline
+        try:
+            bot_logger.info("Initializing Kokoro TTS pipeline...")
+            # Simple mapping for lang_code based on accent, default to 'a' (American English)
+            lang_code = 'a'
+            if TTS_ACCENT and 'gb' in TTS_ACCENT.lower():
+                lang_code = 'b'
             
-            # Wait for server to start with a reasonable timeout
-            start_time = asyncio.get_event_loop().time()
-            while not is_server_running(TTS_SERVER_HOST, TTS_SERVER_PORT):
-                elapsed = asyncio.get_event_loop().time() - start_time
-                if elapsed >= TTS_SERVER_STARTUP_TIMEOUT:
-                    bot_logger.error(f"TTS server failed to start within {TTS_SERVER_STARTUP_TIMEOUT} seconds. Disabling TTS functionality.")
-                    args.no_tts = True
-                    break
-                
-                bot_logger.info(f"TTS server not ready yet, checking again in {TTS_SERVER_CHECK_INTERVAL} seconds... ({int(TTS_SERVER_STARTUP_TIMEOUT - elapsed)}s remaining)")
-                await asyncio.sleep(TTS_SERVER_CHECK_INTERVAL)
-            else:
-                bot_logger.info("TTS server started successfully.")
-        else:
-            bot_logger.info("TTS server is already running.")
+            pipeline = KPipeline(lang_code=lang_code)
+            bot_logger.info(f"Kokoro TTS pipeline initialized (lang={lang_code}).")
+        except Exception as e:
+            bot_logger.error(f"Failed to initialize Kokoro TTS: {e}")
+            bot_logger.warning("TTS functionality will be disabled.")
+            args.no_tts = True
     else:
-        bot_logger.info("Running without TTS server (no-tts mode enabled)")
+        bot_logger.info("Running without TTS (no-tts mode enabled)")
 
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR)
@@ -202,18 +151,27 @@ async def on_ready():
     bot.loop.create_task(audio_worker())
 
 def fetch_and_cache_audio(text, output_filename):
-    bot_logger.info(f"Fetching from server: {text}")
-    params = {
-        "text": text,
-        "voice": TTS_VOICE,
-        "accent": TTS_ACCENT,
-        "speed": TTS_SPEED,
-    }
-    response = requests.get(SERVER_URL, params=params)
-    response.raise_for_status()  # Raise an exception for bad status codes
+    bot_logger.info(f"Generating audio for: {text}")
+    
+    if pipeline is None:
+        raise Exception("Kokoro pipeline not initialized")
 
-    with open(output_filename, "wb") as f:
-        f.write(response.content)
+    try:
+        generator = pipeline(text, voice=TTS_VOICE, speed=TTS_SPEED)
+        audio_segments = []
+        for _, _, audio in generator:
+            audio_segments.append(audio)
+        
+        if audio_segments:
+            final_audio = np.concatenate(audio_segments)
+            sf.write(output_filename, final_audio, 24000)
+        else:
+            bot_logger.warning(f"No audio generated for text: {text}")
+            raise Exception("No audio generated by Kokoro")
+            
+    except Exception as e:
+        bot_logger.error(f"Error generating audio: {e}")
+        raise e
 
 def load_user_sounds():
     """Load user sound preferences from file"""
@@ -233,8 +191,6 @@ def save_user_sounds():
             json.dump(user_sounds, f)
     except Exception as e:
         bot_logger.error(f"Error saving user sounds: {e}")
-
-import json
 
 @bot.command(name="ask", help="Ask a question to the LLM and get a spoken response. Usage: %ask <your question>")
 async def ask(ctx, *, text: str):

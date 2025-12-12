@@ -24,6 +24,7 @@ logs/
 
 # Testing
 test_logging.py
+
 # Python bytecode
 __pycache__/
 *.py[cod]
