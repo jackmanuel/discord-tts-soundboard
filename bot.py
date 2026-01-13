@@ -308,7 +308,7 @@ async def say(ctx, *, text: str):
     await request_queue.put((ctx, text))
     await ctx.send(f"Added to queue: '{text}'")
 
-@bot.command(name="stop", help="Stop the currently playing audio. Usage: %stop")
+@bot.command(name="stop", aliases=["skip"], help="Stop the currently playing audio. Usage: %stop")
 async def stop(ctx):
     global voice_client
     if voice_client and voice_client.is_connected() and voice_client.is_playing():
