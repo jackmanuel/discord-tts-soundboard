@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 import soundfile as sf
 import numpy as np
 from kokoro import KPipeline
+import shutil
 
 # Load environment variables for logging configuration
 load_dotenv()
@@ -317,7 +318,7 @@ async def stop(ctx):
     else:
         await ctx.send("No audio is currently playing.")
 
-@bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <name> [url] or %upload <name> [url]")
+@bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <name> [url] or %upload <name> [url]. Supports YouTube and SoundCloud.")
 async def upload_sound(ctx, name: str = None, url: str = None):
     if not name:
         await ctx.send("Please provide a name for the sound. Usage: `%addsound <name> [url]`")
@@ -375,7 +376,63 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                 await ctx.send("Invalid URL format. Please provide a valid HTTP or HTTPS URL.")
                 return
             
-            # Get file extension from URL or default to .mp3
+            # Detect if it's a YouTube/SoundCloud/video site URL
+            is_video_site = any(domain in url.lower() for domain in [
+                "youtube.com", "youtu.be", "soundcloud.com", "vimeo.com", 
+                "twitch.tv", "tiktok.com", "twitter.com", "x.com", "instagram.com"
+            ])
+            
+            if is_video_site:
+                status_msg = await ctx.send(f"Fetching audio from link...")
+                try:
+                    # Use a temporary file base for yt-dlp
+                    temp_base = os.path.join(tempfile.gettempdir(), f"ytdlp_{hashlib.md5(url.encode()).hexdigest()}")
+                    
+                    command = [
+                        'yt-dlp',
+                        '-x',
+                        '--audio-format', 'opus',
+                        '--no-playlist',
+                        '--max-filesize', '15M',
+                        '--match-filter', 'duration < 120', # Limit to 2 minutes for soundboard
+                        '-o', f"{temp_base}.%(ext)s",
+                        url
+                    ]
+                    
+                    process = await asyncio.create_subprocess_exec(
+                        *command,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+                    stdout, stderr = await process.communicate()
+                    
+                    if process.returncode != 0:
+                        err_msg = stderr.decode()
+                        if "does not pass filter" in err_msg:
+                            await status_msg.edit(content="Error: Audio is too long (max 120 seconds).")
+                        elif "File is larger than max-filesize" in err_msg:
+                            await status_msg.edit(content="Error: File is too large (max 15MB).")
+                        else:
+                            bot_logger.error(f"yt-dlp error: {err_msg}")
+                            await status_msg.edit(content="Error: Failed to process the provided link.")
+                        return
+
+                    # Find what yt-dlp actually created
+                    expected_file = f"{temp_base}.opus"
+                    if os.path.exists(expected_file):
+                        shutil.move(expected_file, output_path)
+                        await status_msg.edit(content=f"Sound '{name}' added to soundboard successfully!")
+                        return
+                    else:
+                        await status_msg.edit(content="Error: Audio file not found after download.")
+                        return
+                        
+                except Exception as e:
+                    bot_logger.error(f"yt-dlp exception: {e}")
+                    await ctx.send("An unexpected error occurred while processing the link.")
+                    return
+
+            # Fallback to direct download for other URLs
             url_lower = url.lower()
             if url_lower.endswith('.mp3'):
                 filename = "temp.mp3"
@@ -384,34 +441,30 @@ async def upload_sound(ctx, name: str = None, url: str = None):
             elif url_lower.endswith('.opus'):
                 filename = "temp.opus"
             else:
-                # Default to mp3 if we can't determine the extension
                 filename = "temp.mp3"
             
-            # Download the file from URL
             try:
                 response = requests.get(url, stream=True)
                 response.raise_for_status()
                 
-                # Check content-length if available
                 content_length = response.headers.get('content-length')
-                if content_length and int(content_length) > 3 * 1024 * 1024:  # 3MB
-                    await ctx.send("File is too large. Please keep it under 3MB.")
+                if content_length and int(content_length) > 5 * 1024 * 1024:  # 5MB
+                    await ctx.send("File is too large. Please keep it under 5MB.")
                     return
                 
-                # Save to temporary file
                 with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as temp_file:
                     temp_path = temp_file.name
                     for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:  # filter out keep-alive new chunks
+                        if chunk:
                             temp_file.write(chunk)
                 
             except requests.exceptions.RequestException as e:
-                await ctx.send(f"Error downloading file from URL: {e}")
+                bot_logger.error(f"Download error: {e}")
+                await ctx.send("Failed to download the file from the provided URL.")
                 return
         
         # Convert to opus if needed
         if filename.endswith('.opus'):
-            import shutil
             shutil.move(temp_path, output_path)
         else:
             # Convert mp3/wav to opus using ffmpeg
@@ -426,7 +479,8 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                 if temp_path:
                     os.unlink(temp_path)
             except subprocess.CalledProcessError as e:
-                await ctx.send(f"Error converting file: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+                bot_logger.error(f"ffmpeg conversion error: {e.stderr.decode() if e.stderr else str(e)}")
+                await ctx.send("Failed to convert the audio file to a compatible format.")
                 if temp_path and os.path.exists(temp_path):
                     os.unlink(temp_path)
                 return
@@ -434,7 +488,8 @@ async def upload_sound(ctx, name: str = None, url: str = None):
         await ctx.send(f"Sound '{name}' added to soundboard successfully!")
         
     except Exception as e:
-        await ctx.send(f"An error occurred while processing the file: {e}")
+        bot_logger.error(f"Error processing sound upload: {e}")
+        await ctx.send("An error occurred while processing the file.")
         # Clean up temp file if it exists
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)

@@ -4,3 +4,4 @@ python-dotenv
 kokoro
 soundfile
 numpy
+yt-dlp
