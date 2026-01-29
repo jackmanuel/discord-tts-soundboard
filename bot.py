@@ -195,11 +195,17 @@ def save_user_sounds():
 
 @bot.command(name="ask", help="Ask a question to the LLM and get a spoken response. Usage: %ask <your question>")
 async def ask(ctx, *, text: str):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %ask | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Text: '{text}'")
+    
     if not ctx.author.voice:
+        bot_logger.info(f"Command %ask rejected: User {ctx.author.name} not in voice channel")
         await ctx.send("You are not connected to a voice channel.")
         return
     
     if args.no_tts:
+        bot_logger.info(f"Command %ask rejected: TTS disabled")
         await ctx.send("Error: Bot currently has TTS disabled.")
         return
 
@@ -247,10 +253,17 @@ async def ask(ctx, *, text: str):
 
 @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %soundboard <sound_name> or %sb <sound_name>")
 async def soundboard(ctx, name: str = None):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    voice_channel_name = ctx.author.voice.channel.name if ctx.author.voice else "None"
+    bot_logger.info(f"Command: %soundboard | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Voice: {voice_channel_name} | Sound: '{name}'")
+    
     if not name:
+        bot_logger.info(f"Command %soundboard rejected: No sound name provided")
         await ctx.send("Please provide a sound name. Usage: `%sb <sound_name>`")
         return
     if not ctx.author.voice:
+        bot_logger.info(f"Command %soundboard rejected: User {ctx.author.name} not in voice channel")
         await ctx.send("You are not connected to a voice channel.")
         return
 
@@ -258,10 +271,12 @@ async def soundboard(ctx, name: str = None):
     try:
         available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
     except FileNotFoundError:
+        bot_logger.warning(f"Command %soundboard: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
 
     if name not in available_sounds:
+        bot_logger.info(f"Command %soundboard rejected: Invalid sound '{name}'")
         if len(available_sounds) > 1:
             sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
         elif available_sounds:
@@ -272,77 +287,94 @@ async def soundboard(ctx, name: str = None):
         return
 
     filepath = os.path.join(soundboard_dir, f"{name}.opus")
-    
-    # Log the soundboard play request
-    channel_name = ctx.author.voice.channel.name if ctx.author.voice else "Unknown"
-    bot_logger.info(f"Soundboard: '{name}' requested by {ctx.author.name} ({ctx.author.id}) in channel {channel_name}")
 
     global voice_client
     try:
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
-            bot_logger.info(f"Connecting to voice channel {voice_channel.name} to play soundboard sound")
+            bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
             voice_client = await voice_channel.connect()
         
-        bot_logger.info(f"Now playing soundboard sound: {filepath}")
+        bot_logger.info(f"Command %soundboard: Playing '{name}' ({filepath})")
         voice_client.play(discord.FFmpegPCMAudio(filepath))
 
         while voice_client.is_playing():
             await asyncio.sleep(1)
             
-        bot_logger.info(f"Finished playing soundboard sound '{name}' for {ctx.author.name}")
+        bot_logger.info(f"Command %soundboard: Finished playing '{name}' for {ctx.author.name}")
 
     except Exception as e:
-        bot_logger.error(f"Error playing soundboard sound '{name}' for {ctx.author.name}: {e}")
+        bot_logger.error(f"Command %soundboard: Error playing '{name}' for {ctx.author.name}: {e}")
         await ctx.send(f"An error occurred: {e}")
 
 @bot.command(name="say", help="Convert text to speech and play it in the voice channel. Usage: %say <text>")
 async def say(ctx, *, text: str):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    voice_channel = ctx.author.voice.channel.name if ctx.author.voice else "None"
+    bot_logger.info(f"Command: %say | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Voice: {voice_channel} | Text: '{text}'")
+    
     if not ctx.author.voice:
+        bot_logger.info(f"Command %say rejected: User {ctx.author.name} not in voice channel")
         await ctx.send("You are not connected to a voice channel.")
         return
     
     if args.no_tts:
+        bot_logger.info(f"Command %say rejected: TTS disabled")
         await ctx.send("Error: Bot currently has TTS disabled.")
         return
 
     await request_queue.put((ctx, text))
+    bot_logger.info(f"Command %say: Added to queue for user {ctx.author.name}")
     await ctx.send(f"Added to queue: '{text}'")
 
 @bot.command(name="stop", aliases=["skip"], help="Stop the currently playing audio. Usage: %stop")
 async def stop(ctx):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %stop | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
+    
     global voice_client
     if voice_client and voice_client.is_connected() and voice_client.is_playing():
         voice_client.stop()
+        bot_logger.info(f"Command %stop: Audio stopped by {ctx.author.name}")
         await ctx.send("Audio stopped.")
     else:
+        bot_logger.info(f"Command %stop: No audio playing")
         await ctx.send("No audio is currently playing.")
 
 @bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <name> [url] or %upload <name> [url]. Supports YouTube and SoundCloud.")
 async def upload_sound(ctx, name: str = None, url: str = None):
-    if not name:
-        await ctx.send("Please provide a name for the sound. Usage: `%addsound <name> [url]`")
-        return
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
     
     # Determine if we're using an attachment or URL
     has_attachment = len(ctx.message.attachments) > 0
     has_url = url is not None
     
-    source_info = f"url: {url}" if has_url else (f"attachment: {ctx.message.attachments[0].filename}" if has_attachment else "none")
-    bot_logger.info(f"Addsound: '{name}' requested by {ctx.author.name} ({ctx.author.id}) - Source: {source_info}")
+    source_info = f"URL: {url}" if has_url else (f"Attachment: {ctx.message.attachments[0].filename}" if has_attachment else "None")
+    bot_logger.info(f"Command: %addsound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Name: '{name}' | Source: {source_info}")
+    
+    if not name:
+        bot_logger.info(f"Command %addsound rejected: No sound name provided")
+        await ctx.send("Please provide a name for the sound. Usage: `%addsound <name> [url]`")
+        return
     
     # Check if sound already exists
     soundboard_dir = "soundboard"
     output_path = os.path.join(soundboard_dir, f"{name}.opus")
     if os.path.exists(output_path):
+        bot_logger.info(f"Command %addsound rejected: Sound '{name}' already exists")
         await ctx.send(f"A sound with the name '{name}' already exists.")
         return
     
     if not has_attachment and not has_url:
+        bot_logger.info(f"Command %addsound rejected: No source provided")
         await ctx.send("Please either attach an audio file or provide a URL with your command.")
         return
     
     if has_attachment and has_url:
+        bot_logger.info(f"Command %addsound rejected: Both attachment and URL provided")
         await ctx.send("Please provide either an attachment or a URL, not both.")
         return
     
@@ -360,12 +392,14 @@ async def upload_sound(ctx, name: str = None, url: str = None):
             
             # Check file size
             if attachment.size > 3 * 1024 * 1024:  # 3MB
+                bot_logger.info(f"Command %addsound rejected: Attachment too large ({attachment.size} bytes)")
                 await ctx.send("File is too large. Please keep it under 3MB.")
                 return
             
             # Get file extension
             filename = attachment.filename.lower()
             if not (filename.endswith('.mp3') or filename.endswith('.wav') or filename.endswith('.opus')):
+                bot_logger.info(f"Command %addsound rejected: Invalid file type '{filename}'")
                 await ctx.send("Invalid file type. Please upload .mp3, .wav, or .opus files only.")
                 return
             
@@ -376,6 +410,7 @@ async def upload_sound(ctx, name: str = None, url: str = None):
         
         else:  # has_url
             if not (url.startswith('http://') or url.startswith('https://')):
+                bot_logger.info(f"Command %addsound rejected: Invalid URL format")
                 await ctx.send("Invalid URL format. Please provide a valid HTTP or HTTPS URL.")
                 return
             
@@ -413,28 +448,28 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                     
                     if process.returncode != 0 or not os.path.exists(f"{temp_base}.opus"):
                         if "does not pass filter" in combined_output or "skipping" in combined_output:
-                            bot_logger.warning(f"Addsound: '{name}' failed - Video too long. URL: {url}")
+                            bot_logger.warning(f"Command %addsound: Failed for '{name}' - Video too long | URL: {url}")
                             await status_msg.edit(content="Error: Audio is too long (max 120 seconds).")
                         elif "larger than max-filesize" in combined_output:
-                            bot_logger.warning(f"Addsound: '{name}' failed - File too large. URL: {url}")
+                            bot_logger.warning(f"Command %addsound: Failed for '{name}' - File too large | URL: {url}")
                             await status_msg.edit(content="Error: File is too large (max 15MB).")
                         else:
                             if process.returncode != 0:
-                                bot_logger.error(f"yt-dlp error (code {process.returncode}): {stderr.decode()}")
+                                bot_logger.error(f"Command %addsound: yt-dlp error (code {process.returncode}): {stderr.decode()}")
                             else:
-                                bot_logger.error(f"yt-dlp finished but file missing. Output: {combined_output}")
+                                bot_logger.error(f"Command %addsound: yt-dlp finished but file missing | Output: {combined_output}")
                             await status_msg.edit(content="Error: Failed to process the provided link.")
                         return
 
                     # Find what yt-dlp actually created
                     expected_file = f"{temp_base}.opus"
                     shutil.move(expected_file, output_path)
-                    bot_logger.info(f"Addsound: '{name}' successfully added to soundboard (yt-dlp)")
+                    bot_logger.info(f"Command %addsound: Successfully added '{name}' to soundboard (via yt-dlp)")
                     await status_msg.edit(content=f"Sound '{name}' added to soundboard successfully!")
                     return
                         
                 except Exception as e:
-                    bot_logger.error(f"yt-dlp exception: {e}")
+                    bot_logger.error(f"Command %addsound: yt-dlp exception for '{name}': {e}")
                     await ctx.send("An unexpected error occurred while processing the link.")
                     return
 
@@ -455,6 +490,7 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                 
                 content_length = response.headers.get('content-length')
                 if content_length and int(content_length) > 5 * 1024 * 1024:  # 5MB
+                    bot_logger.info(f"Command %addsound rejected: URL file too large ({content_length} bytes)")
                     await ctx.send("File is too large. Please keep it under 5MB.")
                     return
                 
@@ -465,7 +501,7 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                             temp_file.write(chunk)
                 
             except requests.exceptions.RequestException as e:
-                bot_logger.error(f"Download error: {e}")
+                bot_logger.error(f"Command %addsound: Download error for '{name}': {e}")
                 await ctx.send("Failed to download the file from the provided URL.")
                 return
         
@@ -485,16 +521,17 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                 if temp_path:
                     os.unlink(temp_path)
             except subprocess.CalledProcessError as e:
-                bot_logger.error(f"ffmpeg conversion error: {e.stderr.decode() if e.stderr else str(e)}")
+                bot_logger.error(f"Command %addsound: ffmpeg conversion error for '{name}': {e.stderr.decode() if e.stderr else str(e)}")
                 await ctx.send("Failed to convert the audio file to a compatible format.")
                 if temp_path and os.path.exists(temp_path):
                     os.unlink(temp_path)
                 return
         
+        bot_logger.info(f"Command %addsound: Successfully added '{name}' to soundboard")
         await ctx.send(f"Sound '{name}' added to soundboard successfully!")
         
     except Exception as e:
-        bot_logger.error(f"Error processing sound upload: {e}")
+        bot_logger.error(f"Command %addsound: Error processing '{name}': {e}")
         await ctx.send("An error occurred while processing the file.")
         # Clean up temp file if it exists
         if temp_path and os.path.exists(temp_path):
@@ -502,23 +539,35 @@ async def upload_sound(ctx, name: str = None, url: str = None):
 
 @bot.command(name="listsounds", aliases=["ls"], help="List all available sounds in the soundboard. Usage: %listsounds or %ls")
 async def list_sounds(ctx):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %listsounds | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
+    
     soundboard_dir = "soundboard"
     try:
         available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
     except FileNotFoundError:
+        bot_logger.warning(f"Command %listsounds: Soundboard directory not found")
         await ctx.send("Soundboard directory not found.")
         return
     
     if not available_sounds:
+        bot_logger.info(f"Command %listsounds: No sounds available")
         await ctx.send("No sounds available in the soundboard.")
         return
     
+    bot_logger.info(f"Command %listsounds: Returning {len(available_sounds)} sounds")
     sounds_list = ", ".join(available_sounds)
     await ctx.send(f"Available sounds: {sounds_list}")
 
 @bot.command(name="deletesound", aliases=["rmsound"], help="Delete a sound from the soundboard (admin only). Usage: %deletesound <sound_name> or %rmsound <sound_name>")
 async def delete_sound(ctx, name: str):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %deletesound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
+    
     if not ctx.author.guild_permissions.administrator:
+        bot_logger.warning(f"Command %deletesound rejected: User {ctx.author.name} lacks admin permissions")
         await ctx.send("You need administrator permissions to delete sounds.")
         return
     
@@ -526,18 +575,26 @@ async def delete_sound(ctx, name: str):
     sound_path = os.path.join(soundboard_dir, f"{name}.opus")
     
     if not os.path.exists(sound_path):
+        bot_logger.info(f"Command %deletesound: Sound '{name}' not found")
         await ctx.send(f"Sound '{name}' not found.")
         return
     
     try:
         os.remove(sound_path)
+        bot_logger.info(f"Command %deletesound: Sound '{name}' deleted by {ctx.author.name}")
         await ctx.send(f"Sound '{name}' deleted successfully.")
     except Exception as e:
+        bot_logger.error(f"Command %deletesound: Error deleting '{name}': {e}")
         await ctx.send(f"An error occurred while deleting the sound: {e}")
 
 @bot.command(name="setjoinsound", help="Set a sound to play when you join a voice channel. Usage: %setjoinsound <sound_name>")
 async def set_join_sound(ctx, name: str = None):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %setjoinsound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
+    
     if not name:
+        bot_logger.info(f"Command %setjoinsound rejected: No sound name provided")
         await ctx.send("Please provide a sound name. Usage: `%setjoinsound <sound_name>`")
         return
     
@@ -545,10 +602,12 @@ async def set_join_sound(ctx, name: str = None):
     try:
         available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
     except FileNotFoundError:
+        bot_logger.warning(f"Command %setjoinsound: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
     
     if name not in available_sounds:
+        bot_logger.info(f"Command %setjoinsound rejected: Invalid sound '{name}'")
         if len(available_sounds) > 1:
             sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
         elif available_sounds:
@@ -564,11 +623,17 @@ async def set_join_sound(ctx, name: str = None):
     
     user_sounds[user_id]["join"] = name
     save_user_sounds()
+    bot_logger.info(f"Command %setjoinsound: User {ctx.author.name} set join sound to '{name}'")
     await ctx.send(f"Your join sound has been set to '{name}'")
 
 @bot.command(name="setleavesound", help="Set a sound to play when you leave a voice channel. Usage: %setleavesound <sound_name>")
 async def set_leave_sound(ctx, name: str = None):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %setleavesound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
+    
     if not name:
+        bot_logger.info(f"Command %setleavesound rejected: No sound name provided")
         await ctx.send("Please provide a sound name. Usage: `%setleavesound <sound_name>`")
         return
     
@@ -576,10 +641,12 @@ async def set_leave_sound(ctx, name: str = None):
     try:
         available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
     except FileNotFoundError:
+        bot_logger.warning(f"Command %setleavesound: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
     
     if name not in available_sounds:
+        bot_logger.info(f"Command %setleavesound rejected: Invalid sound '{name}'")
         if len(available_sounds) > 1:
             sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
         elif available_sounds:
@@ -595,63 +662,94 @@ async def set_leave_sound(ctx, name: str = None):
     
     user_sounds[user_id]["leave"] = name
     save_user_sounds()
+    bot_logger.info(f"Command %setleavesound: User {ctx.author.name} set leave sound to '{name}'")
     await ctx.send(f"Your leave sound has been set to '{name}'")
 
 @bot.command(name="unsetjoinsound", help="Remove your join sound. Usage: %unsetjoinsound")
 async def unset_join_sound(ctx):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %unsetjoinsound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
+    
     user_id = str(ctx.author.id)
     if user_id in user_sounds and "join" in user_sounds[user_id]:
+        old_sound = user_sounds[user_id]["join"]
         del user_sounds[user_id]["join"]
         save_user_sounds()
+        bot_logger.info(f"Command %unsetjoinsound: User {ctx.author.name} removed join sound (was '{old_sound}')")
         await ctx.send("Your join sound has been removed.")
     else:
+        bot_logger.info(f"Command %unsetjoinsound: User {ctx.author.name} has no join sound set")
         await ctx.send("You don't have a join sound set.")
 
 @bot.command(name="unsetleavesound", help="Remove your leave sound. Usage: %unsetleavesound")
 async def unset_leave_sound(ctx):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %unsetleavesound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
+    
     user_id = str(ctx.author.id)
     if user_id in user_sounds and "leave" in user_sounds[user_id]:
+        old_sound = user_sounds[user_id]["leave"]
         del user_sounds[user_id]["leave"]
         save_user_sounds()
+        bot_logger.info(f"Command %unsetleavesound: User {ctx.author.name} removed leave sound (was '{old_sound}')")
         await ctx.send("Your leave sound has been removed.")
     else:
+        bot_logger.info(f"Command %unsetleavesound: User {ctx.author.name} has no leave sound set")
         await ctx.send("You don't have a leave sound set.")
 
 @bot.command(name="mysounds", help="Check your current join and leave sounds. Usage: %mysounds")
 async def my_sounds(ctx):
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    bot_logger.info(f"Command: %mysounds | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
+    
     user_id = str(ctx.author.id)
     if user_id in user_sounds:
         join_sound = user_sounds[user_id].get("join", "None")
         leave_sound = user_sounds[user_id].get("leave", "None")
+        bot_logger.info(f"Command %mysounds: User {ctx.author.name} has join='{join_sound}', leave='{leave_sound}'")
         await ctx.send(f"Your sounds:\nJoin: {join_sound}\nLeave: {leave_sound}")
     else:
+        bot_logger.info(f"Command %mysounds: User {ctx.author.name} has no sounds set")
         await ctx.send("You don't have any sounds set.")
 
 @bot.command(name="replay", aliases=["repeat"], help="Replay the most recently played TTS sound file. Usage: %replay or %repeat")
 async def replay(ctx):
     global voice_client, disconnect_timer, last_tts_file
     
+    channel_name = ctx.channel.name if ctx.channel else "DM"
+    guild_name = ctx.guild.name if ctx.guild else "DM"
+    voice_channel_name = ctx.author.voice.channel.name if ctx.author.voice else "None"
+    bot_logger.info(f"Command: %replay | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Voice: {voice_channel_name}")
+    
     if not ctx.author.voice:
+        bot_logger.info(f"Command %replay rejected: User {ctx.author.name} not in voice channel")
         await ctx.send("You are not connected to a voice channel.")
         return
     
     if args.no_tts:
+        bot_logger.info(f"Command %replay rejected: TTS disabled")
         await ctx.send("Error: Bot currently has TTS disabled.")
         return
     
     if not last_tts_file or not os.path.exists(last_tts_file):
+        bot_logger.info(f"Command %replay rejected: No TTS file available")
         await ctx.send("No TTS audio file has been played yet or the file is no longer available.")
         return
     
     try:
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
+            bot_logger.info(f"Command %replay: Connecting to voice channel {voice_channel.name}")
             voice_client = await voice_channel.connect()
 
         # If there's a timer, cancel it
         if disconnect_timer:
             disconnect_timer.cancel()
 
+        bot_logger.info(f"Command %replay: Playing file {last_tts_file}")
         voice_client.play(discord.FFmpegPCMAudio(last_tts_file))
 
         while voice_client.is_playing():
@@ -661,9 +759,11 @@ async def replay(ctx):
         loop = asyncio.get_event_loop()
         disconnect_timer = loop.call_later(10 * 60, lambda: asyncio.ensure_future(disconnect_voice()))
 
+        bot_logger.info(f"Command %replay: Successfully replayed TTS for {ctx.author.name}")
         await ctx.send("Replayed the most recent TTS audio.")
 
     except Exception as e:
+        bot_logger.error(f"Command %replay: Error for {ctx.author.name}: {e}")
         await ctx.send(f"An error occurred: {e}")
 
 async def play_user_sound(member, channel, sound_type):
