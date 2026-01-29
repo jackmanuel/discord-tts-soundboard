@@ -324,16 +324,19 @@ async def upload_sound(ctx, name: str = None, url: str = None):
         await ctx.send("Please provide a name for the sound. Usage: `%addsound <name> [url]`")
         return
     
+    # Determine if we're using an attachment or URL
+    has_attachment = len(ctx.message.attachments) > 0
+    has_url = url is not None
+    
+    source_info = f"url: {url}" if has_url else (f"attachment: {ctx.message.attachments[0].filename}" if has_attachment else "none")
+    bot_logger.info(f"Addsound: '{name}' requested by {ctx.author.name} ({ctx.author.id}) - Source: {source_info}")
+    
     # Check if sound already exists
     soundboard_dir = "soundboard"
     output_path = os.path.join(soundboard_dir, f"{name}.opus")
     if os.path.exists(output_path):
         await ctx.send(f"A sound with the name '{name}' already exists.")
         return
-    
-    # Determine if we're using an attachment or URL
-    has_attachment = len(ctx.message.attachments) > 0
-    has_url = url is not None
     
     if not has_attachment and not has_url:
         await ctx.send("Please either attach an audio file or provide a URL with your command.")
@@ -406,26 +409,29 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                     )
                     stdout, stderr = await process.communicate()
                     
-                    if process.returncode != 0:
-                        err_msg = stderr.decode()
-                        if "does not pass filter" in err_msg:
+                    combined_output = (stdout.decode() + "\n" + stderr.decode()).lower()
+                    
+                    if process.returncode != 0 or not os.path.exists(f"{temp_base}.opus"):
+                        if "does not pass filter" in combined_output or "skipping" in combined_output:
+                            bot_logger.warning(f"Addsound: '{name}' failed - Video too long. URL: {url}")
                             await status_msg.edit(content="Error: Audio is too long (max 120 seconds).")
-                        elif "File is larger than max-filesize" in err_msg:
+                        elif "larger than max-filesize" in combined_output:
+                            bot_logger.warning(f"Addsound: '{name}' failed - File too large. URL: {url}")
                             await status_msg.edit(content="Error: File is too large (max 15MB).")
                         else:
-                            bot_logger.error(f"yt-dlp error: {err_msg}")
+                            if process.returncode != 0:
+                                bot_logger.error(f"yt-dlp error (code {process.returncode}): {stderr.decode()}")
+                            else:
+                                bot_logger.error(f"yt-dlp finished but file missing. Output: {combined_output}")
                             await status_msg.edit(content="Error: Failed to process the provided link.")
                         return
 
                     # Find what yt-dlp actually created
                     expected_file = f"{temp_base}.opus"
-                    if os.path.exists(expected_file):
-                        shutil.move(expected_file, output_path)
-                        await status_msg.edit(content=f"Sound '{name}' added to soundboard successfully!")
-                        return
-                    else:
-                        await status_msg.edit(content="Error: Audio file not found after download.")
-                        return
+                    shutil.move(expected_file, output_path)
+                    bot_logger.info(f"Addsound: '{name}' successfully added to soundboard (yt-dlp)")
+                    await status_msg.edit(content=f"Sound '{name}' added to soundboard successfully!")
+                    return
                         
                 except Exception as e:
                     bot_logger.error(f"yt-dlp exception: {e}")
