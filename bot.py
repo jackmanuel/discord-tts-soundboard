@@ -18,6 +18,7 @@ import soundfile as sf
 import numpy as np
 from kokoro import KPipeline
 import shutil
+import soundboard_generator
 
 # Load environment variables for logging configuration
 load_dotenv()
@@ -263,12 +264,12 @@ async def ask(ctx, *, text: str):
     except Exception as e:
         await ctx.send(f"An error occurred: {e}")
 
-@bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %soundboard <sound_name> or %sb <sound_name>")
-async def soundboard(ctx, name: str = None):
+@bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds]")
+async def soundboard(ctx, name: str = None, option: str = None):
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     voice_channel_name = ctx.author.voice.channel.name if ctx.author.voice else "None"
-    bot_logger.info(f"Command: %soundboard | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Voice: {voice_channel_name} | Sound: '{name}'")
+    bot_logger.info(f"Command: %soundboard | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Voice: {voice_channel_name} | Sound: '{name}' | Option: '{option}'")
     
     if not name:
         bot_logger.info(f"Command %soundboard rejected: No sound name provided")
@@ -279,20 +280,109 @@ async def soundboard(ctx, name: str = None):
         await ctx.send("You are not connected to a voice channel.")
         return
 
+    # Handle special sounds: "all" and "seq"
+    if name in ("all", "seq"):
+        # Determine the duration key
+        if name == "all":
+            if option is None:
+                duration_key = soundboard_generator.DEFAULT_ALL_DURATION
+            elif option.lower() == "full":
+                duration_key = "full"
+            else:
+                try:
+                    duration_key = int(option)
+                    if duration_key < 1:
+                        await ctx.send("Duration must be at least 1 second.")
+                        return
+                except ValueError:
+                    await ctx.send("Invalid option. Usage: `%sb all [seconds|full]`")
+                    return
+        else:  # seq
+            if option is None:
+                duration_key = soundboard_generator.DEFAULT_SEQ_DURATION
+            elif option.lower() == "full":
+                duration_key = "full"
+            else:
+                try:
+                    duration_key = int(option)
+                    if duration_key < 1:
+                        await ctx.send("Duration must be at least 1 second.")
+                        return
+                except ValueError:
+                    await ctx.send("Invalid option. Usage: `%sb seq [seconds|full]`")
+                    return
+        
+        # Check if there are any real sounds to work with
+        real_sounds = soundboard_generator.get_real_sound_names()
+        if not real_sounds:
+            await ctx.send("No sounds available to generate from.")
+            return
+        
+        # Get or generate the sound
+        filepath, status_msg = await soundboard_generator.get_or_generate(name, duration_key, ctx)
+        
+        if not filepath:
+            if not status_msg:
+                await ctx.send(f"Failed to generate {name} sound.")
+            return
+        
+        # Play the generated sound
+        global voice_client
+        try:
+            if voice_client is None or not voice_client.is_connected():
+                voice_channel = ctx.author.voice.channel
+                bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
+                voice_client = await voice_channel.connect()
+            
+            duration_display = "full" if duration_key == "full" else f"{duration_key}s"
+            bot_logger.info(f"Command %soundboard: Playing '{name}' ({duration_display}) ({filepath})")
+            
+            # Get file duration with ffprobe and notify in Discord
+            try:
+                probe = subprocess.run(
+                    ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', filepath],
+                    capture_output=True, text=True, timeout=5
+                )
+                if probe.returncode == 0 and probe.stdout.strip():
+                    total_seconds = float(probe.stdout.strip())
+                    minutes = int(total_seconds) // 60
+                    seconds = int(total_seconds) % 60
+                    if minutes > 0:
+                        await ctx.send(f"▶️ Playing **{name}** ({duration_display}) — {minutes}m {seconds}s")
+                    else:
+                        await ctx.send(f"▶️ Playing **{name}** ({duration_display}) — {seconds}s")
+            except Exception:
+                pass  # Don't block playback if ffprobe fails
+            
+            voice_client.play(discord.FFmpegPCMAudio(filepath))
+
+            while voice_client.is_playing():
+                await asyncio.sleep(1)
+                
+            bot_logger.info(f"Command %soundboard: Finished playing '{name}' ({duration_display}) for {ctx.author.name}")
+
+        except Exception as e:
+            bot_logger.error(f"Command %soundboard: Error playing '{name}' for {ctx.author.name}: {e}")
+            await ctx.send(f"An error occurred: {e}")
+        return
+
+    # Regular sound playback
     soundboard_dir = "soundboard"
     try:
-        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
-    except FileNotFoundError:
+        available_sounds = soundboard_generator.get_real_sound_names()
+    except Exception:
         bot_logger.warning(f"Command %soundboard: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
 
     if name not in available_sounds:
         bot_logger.info(f"Command %soundboard rejected: Invalid sound '{name}'")
-        if len(available_sounds) > 1:
-            sounds_list = ", ".join(available_sounds[:-1]) + f", or {available_sounds[-1]}"
-        elif available_sounds:
-            sounds_list = available_sounds[0]
+        # Include 'all' and 'seq' in the hint
+        display_sounds = available_sounds + ["all", "seq"]
+        if len(display_sounds) > 1:
+            sounds_list = ", ".join(display_sounds[:-1]) + f", or {display_sounds[-1]}"
+        elif display_sounds:
+            sounds_list = display_sounds[0]
         else:
             sounds_list = ""
         await ctx.send(f"Invalid sound. Choose from: {sounds_list}")
@@ -300,7 +390,6 @@ async def soundboard(ctx, name: str = None):
 
     filepath = os.path.join(soundboard_dir, f"{name}.opus")
 
-    global voice_client
     try:
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
@@ -478,6 +567,9 @@ async def upload_sound(ctx, name: str = None, url: str = None):
                     shutil.move(expected_file, output_path)
                     bot_logger.info(f"Command %addsound: Successfully added '{name}' to soundboard (via yt-dlp)")
                     await status_msg.edit(content=f"Sound '{name}' added to soundboard successfully!")
+                    # Regenerate special sounds in background
+                    bot_logger.info(f"Command %addsound: Triggering regeneration of cached special sounds")
+                    asyncio.ensure_future(soundboard_generator.regenerate_all_cached())
                     return
                         
                 except Exception as e:
@@ -541,6 +633,9 @@ async def upload_sound(ctx, name: str = None, url: str = None):
         
         bot_logger.info(f"Command %addsound: Successfully added '{name}' to soundboard")
         await ctx.send(f"Sound '{name}' added to soundboard successfully!")
+        # Regenerate special sounds in background
+        bot_logger.info(f"Command %addsound: Triggering regeneration of cached special sounds")
+        asyncio.ensure_future(soundboard_generator.regenerate_all_cached())
         
     except Exception as e:
         bot_logger.error(f"Command %addsound: Error processing '{name}': {e}")
@@ -555,10 +650,9 @@ async def list_sounds(ctx):
     guild_name = ctx.guild.name if ctx.guild else "DM"
     bot_logger.info(f"Command: %listsounds | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name}")
     
-    soundboard_dir = "soundboard"
     try:
-        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
-    except FileNotFoundError:
+        available_sounds = soundboard_generator.get_real_sound_names()
+    except Exception:
         bot_logger.warning(f"Command %listsounds: Soundboard directory not found")
         await ctx.send("Soundboard directory not found.")
         return
@@ -570,7 +664,7 @@ async def list_sounds(ctx):
     
     bot_logger.info(f"Command %listsounds: Returning {len(available_sounds)} sounds")
     sounds_list = ", ".join(available_sounds)
-    await ctx.send(f"Available sounds: {sounds_list}")
+    await ctx.send(f"Available sounds: {sounds_list}\n*Special: all, seq*")
 
 @bot.command(name="deletesound", aliases=["rmsound"], help="Delete a sound from the soundboard (admin only). Usage: %deletesound <sound_name> or %rmsound <sound_name>")
 async def delete_sound(ctx, name: str):
@@ -595,6 +689,9 @@ async def delete_sound(ctx, name: str):
         os.remove(sound_path)
         bot_logger.info(f"Command %deletesound: Sound '{name}' deleted by {ctx.author.name}")
         await ctx.send(f"Sound '{name}' deleted successfully.")
+        # Regenerate special sounds in background
+        bot_logger.info(f"Command %deletesound: Triggering regeneration of cached special sounds")
+        asyncio.ensure_future(soundboard_generator.regenerate_all_cached())
     except Exception as e:
         bot_logger.error(f"Command %deletesound: Error deleting '{name}': {e}")
         await ctx.send(f"An error occurred while deleting the sound: {e}")
@@ -610,10 +707,9 @@ async def set_join_sound(ctx, name: str = None):
         await ctx.send("Please provide a sound name. Usage: `%setjoinsound <sound_name>`")
         return
     
-    soundboard_dir = "soundboard"
     try:
-        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
-    except FileNotFoundError:
+        available_sounds = soundboard_generator.get_real_sound_names()
+    except Exception:
         bot_logger.warning(f"Command %setjoinsound: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
@@ -649,10 +745,9 @@ async def set_leave_sound(ctx, name: str = None):
         await ctx.send("Please provide a sound name. Usage: `%setleavesound <sound_name>`")
         return
     
-    soundboard_dir = "soundboard"
     try:
-        available_sounds = [f.split('.')[0] for f in os.listdir(soundboard_dir) if f.endswith('.opus')]
-    except FileNotFoundError:
+        available_sounds = soundboard_generator.get_real_sound_names()
+    except Exception:
         bot_logger.warning(f"Command %setleavesound: Soundboard directory not found")
         await ctx.send(f"Soundboard directory not found.")
         return
