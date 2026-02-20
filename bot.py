@@ -120,7 +120,8 @@ async def audio_worker():
             # Track the most recent TTS file
             last_tts_file = output_filename
 
-            voice_client.play(discord.FFmpegPCMAudio(output_filename))
+            source = await discord.FFmpegOpusAudio.from_probe(output_filename)
+            voice_client.play(source)
 
             while voice_client.is_playing():
                 await asyncio.sleep(1)
@@ -354,7 +355,8 @@ async def soundboard(ctx, name: str = None, option: str = None):
             except Exception:
                 pass  # Don't block playback if ffprobe fails
             
-            voice_client.play(discord.FFmpegPCMAudio(filepath))
+            source = await discord.FFmpegOpusAudio.from_probe(filepath)
+            voice_client.play(source)
 
             while voice_client.is_playing():
                 await asyncio.sleep(1)
@@ -397,7 +399,8 @@ async def soundboard(ctx, name: str = None, option: str = None):
             voice_client = await voice_channel.connect()
         
         bot_logger.info(f"Command %soundboard: Playing '{name}' ({filepath})")
-        voice_client.play(discord.FFmpegPCMAudio(filepath))
+        source = await discord.FFmpegOpusAudio.from_probe(filepath)
+        voice_client.play(source)
 
         while voice_client.is_playing():
             await asyncio.sleep(1)
@@ -857,7 +860,8 @@ async def replay(ctx):
             disconnect_timer.cancel()
 
         bot_logger.info(f"Command %replay: Playing file {last_tts_file}")
-        voice_client.play(discord.FFmpegPCMAudio(last_tts_file))
+        source = await discord.FFmpegOpusAudio.from_probe(last_tts_file)
+        voice_client.play(source)
 
         while voice_client.is_playing():
             await asyncio.sleep(1)
@@ -899,7 +903,8 @@ async def play_user_sound(member, channel, sound_type):
                 
                 # Play the sound
                 bot_logger.info(f"Now playing sound file: {filepath}")
-                voice_client.play(discord.FFmpegPCMAudio(filepath))
+                source = await discord.FFmpegOpusAudio.from_probe(filepath)
+                voice_client.play(source)
                 
                 while voice_client.is_playing():
                     await asyncio.sleep(0.5)
