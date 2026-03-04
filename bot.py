@@ -109,13 +109,15 @@ async def audio_worker():
                 continue
 
         try:
+            # Cancel any existing disconnect timer before connecting
+            # to prevent it firing during a slow connection
+            if disconnect_timer:
+                disconnect_timer.cancel()
+                disconnect_timer = None
+
             if voice_client is None or not voice_client.is_connected():
                 voice_channel = ctx.author.voice.channel
                 voice_client = await voice_channel.connect()
-
-            # If there's a timer, cancel it
-            if disconnect_timer:
-                disconnect_timer.cancel()
 
             # Track the most recent TTS file
             last_tts_file = output_filename
@@ -330,6 +332,12 @@ async def soundboard(ctx, name: str = None, option: str = None):
         # Play the generated sound
         global voice_client
         try:
+            # Cancel any existing disconnect timer before connecting
+            # to prevent it firing during a slow connection
+            if disconnect_timer:
+                disconnect_timer.cancel()
+                disconnect_timer = None
+            
             if voice_client is None or not voice_client.is_connected():
                 voice_channel = ctx.author.voice.channel
                 bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
@@ -393,6 +401,12 @@ async def soundboard(ctx, name: str = None, option: str = None):
     filepath = os.path.join(soundboard_dir, f"{name}.opus")
 
     try:
+        # Cancel any existing disconnect timer before connecting
+        # to prevent it firing during a slow connection
+        if disconnect_timer:
+            disconnect_timer.cancel()
+            disconnect_timer = None
+        
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
             bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
@@ -891,15 +905,16 @@ async def play_user_sound(member, channel, sound_type):
         if os.path.exists(filepath):
             global voice_client, disconnect_timer
             try:
+                # Cancel any existing disconnect timer before connecting
+                # to prevent it firing during a slow connection
+                if disconnect_timer:
+                    disconnect_timer.cancel()
+                    disconnect_timer = None
+                
                 # Connect to the channel if not already connected
                 if voice_client is None or not voice_client.is_connected():
                     bot_logger.info(f"Connecting to voice channel {channel.name} to play user sound")
                     voice_client = await channel.connect()
-                
-                # Cancel any existing disconnect timer
-                if disconnect_timer:
-                    disconnect_timer.cancel()
-                    disconnect_timer = None
                 
                 # Play the sound
                 bot_logger.info(f"Now playing sound file: {filepath}")
