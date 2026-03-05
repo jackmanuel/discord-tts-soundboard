@@ -269,6 +269,7 @@ async def ask(ctx, *, text: str):
 
 @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds]")
 async def soundboard(ctx, name: str = None, option: str = None):
+    global voice_client, disconnect_timer
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     voice_channel_name = ctx.author.voice.channel.name if ctx.author.voice else "None"
@@ -330,7 +331,6 @@ async def soundboard(ctx, name: str = None, option: str = None):
             return
         
         # Play the generated sound
-        global voice_client
         try:
             # Cancel any existing disconnect timer before connecting
             # to prevent it firing during a slow connection
@@ -399,6 +399,7 @@ async def soundboard(ctx, name: str = None, option: str = None):
         return
 
     filepath = os.path.join(soundboard_dir, f"{name}.opus")
+
 
     try:
         # Cancel any existing disconnect timer before connecting
