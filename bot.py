@@ -55,7 +55,7 @@ TTS_SPEED = float(os.getenv("TTS_SPEED", 1.0))
 CACHE_DIR = "audio_cache"
 
 # Bot configuration constants
-VOICE_DISCONNECT_TIMEOUT_SECONDS = 600  # 10 minutes - how long to wait before disconnecting from voice
+EMPTY_CHANNEL_TIMEOUT_SECONDS = 60  # 1 minute - how long to wait before disconnecting when alone in voice
 TTS_SAMPLE_RATE = 24000  # Sample rate for Kokoro TTS audio output
 
 # File size and duration limits for soundboard uploads
@@ -75,20 +75,30 @@ intents.voice_states = True
 bot = commands.Bot(command_prefix="%", intents=intents)
 
 voice_client = None
-disconnect_timer = None
+disconnect_task = None
 request_queue = asyncio.Queue()
 user_sounds = {}  # Dictionary to store user sound preferences: {user_id: {"join": sound_name, "leave": sound_name}}
 last_tts_file = None  # Track the most recent TTS audio file (not soundboard)
 
 async def disconnect_voice():
-    global voice_client, disconnect_timer
+    global voice_client, disconnect_task
     if voice_client:
         await voice_client.disconnect()
         voice_client = None
-    disconnect_timer = None
+    if disconnect_task:
+        if not disconnect_task.done():
+            disconnect_task.cancel()
+        disconnect_task = None
+
+async def empty_channel_timeout():
+    await asyncio.sleep(EMPTY_CHANNEL_TIMEOUT_SECONDS)
+    global voice_client
+    if voice_client and voice_client.is_connected():
+        bot_logger.info(f"Bot left alone for {EMPTY_CHANNEL_TIMEOUT_SECONDS} seconds in '{voice_client.channel.name}'. Disconnecting.")
+        await disconnect_voice()
 
 async def audio_worker():
-    global voice_client, disconnect_timer, last_tts_file
+    global voice_client, last_tts_file
     while True:
         ctx, text = await request_queue.get()
 
@@ -109,12 +119,6 @@ async def audio_worker():
                 continue
 
         try:
-            # Cancel any existing disconnect timer before connecting
-            # to prevent it firing during a slow connection
-            if disconnect_timer:
-                disconnect_timer.cancel()
-                disconnect_timer = None
-
             if voice_client is None or not voice_client.is_connected():
                 voice_channel = ctx.author.voice.channel
                 voice_client = await voice_channel.connect()
@@ -127,10 +131,6 @@ async def audio_worker():
 
             while voice_client.is_playing():
                 await asyncio.sleep(1)
-
-            # Start a new timer (10 minutes)
-            loop = asyncio.get_event_loop()
-            disconnect_timer = loop.call_later(VOICE_DISCONNECT_TIMEOUT_SECONDS, lambda: asyncio.ensure_future(disconnect_voice()))
 
             await ctx.send(f"Played: '{text}'")
 
@@ -269,7 +269,7 @@ async def ask(ctx, *, text: str):
 
 @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds]")
 async def soundboard(ctx, name: str = None, option: str = None):
-    global voice_client, disconnect_timer
+    global voice_client
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     voice_channel_name = ctx.author.voice.channel.name if ctx.author.voice else "None"
@@ -332,12 +332,6 @@ async def soundboard(ctx, name: str = None, option: str = None):
         
         # Play the generated sound
         try:
-            # Cancel any existing disconnect timer before connecting
-            # to prevent it firing during a slow connection
-            if disconnect_timer:
-                disconnect_timer.cancel()
-                disconnect_timer = None
-            
             if voice_client is None or not voice_client.is_connected():
                 voice_channel = ctx.author.voice.channel
                 bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
@@ -402,12 +396,6 @@ async def soundboard(ctx, name: str = None, option: str = None):
 
 
     try:
-        # Cancel any existing disconnect timer before connecting
-        # to prevent it firing during a slow connection
-        if disconnect_timer:
-            disconnect_timer.cancel()
-            disconnect_timer = None
-        
         if voice_client is None or not voice_client.is_connected():
             voice_channel = ctx.author.voice.channel
             bot_logger.info(f"Command %soundboard: Connecting to voice channel '{voice_channel.name}'")
@@ -842,7 +830,7 @@ async def my_sounds(ctx):
 
 @bot.command(name="replay", aliases=["repeat"], help="Replay the most recently played TTS sound file. Usage: %replay or %repeat")
 async def replay(ctx):
-    global voice_client, disconnect_timer, last_tts_file
+    global voice_client, last_tts_file
     
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
@@ -870,20 +858,12 @@ async def replay(ctx):
             bot_logger.info(f"Command %replay: Connecting to voice channel {voice_channel.name}")
             voice_client = await voice_channel.connect()
 
-        # If there's a timer, cancel it
-        if disconnect_timer:
-            disconnect_timer.cancel()
-
         bot_logger.info(f"Command %replay: Playing file {last_tts_file}")
         source = await discord.FFmpegOpusAudio.from_probe(last_tts_file)
         voice_client.play(source)
 
         while voice_client.is_playing():
             await asyncio.sleep(1)
-
-        # Start a new timer (10 minutes)
-        loop = asyncio.get_event_loop()
-        disconnect_timer = loop.call_later(VOICE_DISCONNECT_TIMEOUT_SECONDS, lambda: asyncio.ensure_future(disconnect_voice()))
 
         bot_logger.info(f"Command %replay: Successfully replayed TTS for {ctx.author.name}")
         await ctx.send("Replayed the most recent TTS audio.")
@@ -904,14 +884,8 @@ async def play_user_sound(member, channel, sound_type):
         bot_logger.info(f"Playing '{sound_name}' for user {member.name} ({user_id}) {action} voice channel '{channel.name}'")
         
         if os.path.exists(filepath):
-            global voice_client, disconnect_timer
+            global voice_client
             try:
-                # Cancel any existing disconnect timer before connecting
-                # to prevent it firing during a slow connection
-                if disconnect_timer:
-                    disconnect_timer.cancel()
-                    disconnect_timer = None
-                
                 # Connect to the channel if not already connected
                 if voice_client is None or not voice_client.is_connected():
                     bot_logger.info(f"Connecting to voice channel {channel.name} to play user sound")
@@ -927,10 +901,6 @@ async def play_user_sound(member, channel, sound_type):
                 
                 bot_logger.info(f"Finished playing '{sound_name}' for user {member.name}")
                 
-                # Set a new disconnect timer for 10 minutes (600 seconds)
-                loop = asyncio.get_event_loop()
-                disconnect_timer = loop.call_later(VOICE_DISCONNECT_TIMEOUT_SECONDS, lambda: asyncio.ensure_future(disconnect_voice()))
-                
             except Exception as e:
                 bot_logger.error(f"Error playing user sound: {e}")
         else:
@@ -938,8 +908,30 @@ async def play_user_sound(member, channel, sound_type):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    """Handle voice state changes for join/leave sounds"""
-    # Ignore bot's own voice state changes
+    """Handle voice state changes for join/leave sounds and empty channel disconnect"""
+    global voice_client, disconnect_task
+
+    # Handle disconnect timer logic for empty channels
+    if voice_client and voice_client.is_connected():
+        # Check if the channel the bot is in was involved in this state update
+        bot_channel = voice_client.channel
+        if (before.channel and before.channel.id == bot_channel.id) or \
+           (after.channel and after.channel.id == bot_channel.id):
+            
+            non_bot_members = [m for m in bot_channel.members if not m.bot]
+            if not non_bot_members:
+                # Channel became empty
+                if disconnect_task is None or disconnect_task.done():
+                    disconnect_task = bot.loop.create_task(empty_channel_timeout())
+                    bot_logger.info(f"Channel '{bot_channel.name}' became empty. Starting {EMPTY_CHANNEL_TIMEOUT_SECONDS}s disconnect timer.")
+            else:
+                # Channel is not empty
+                if disconnect_task and not disconnect_task.done():
+                    disconnect_task.cancel()
+                    disconnect_task = None
+                    bot_logger.info(f"User joined voice channel '{bot_channel.name}'. Cancelled disconnect timer.")
+
+    # Ignore bot's own voice state changes for join/leave sounds
     if member.bot:
         return
     
