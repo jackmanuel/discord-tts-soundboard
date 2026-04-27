@@ -49,7 +49,9 @@ These commands are disabled when the bot is started with `--no-tts`.
 | Command | Description |
 | --- | --- |
 | `%say <text>` | Converts text to speech and plays it in your voice channel. |
-| `%ask <text>` | Sends text to OpenRouter, then speaks the response. |
+| `%ask <text>` | Sends text to the configured LLM provider, then speaks the response. |
 | `%replay` or `%repeat` | Replays the most recent TTS audio file. |
 
-Kokoro powers local TTS. `%ask` also requires `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in `.env`.
+Kokoro powers local TTS. `%ask` also requires LLM provider settings in `.env`.
+
+Set `LLM_PROVIDER="openrouter"` with `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`, or set `LLM_PROVIDER="local"` with `LOCAL_LLM_URL` and `LOCAL_LLM_MODEL` for a local OpenAI-compatible chat completions server.

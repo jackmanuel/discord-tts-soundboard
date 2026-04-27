@@ -7,7 +7,7 @@ import requests
 from logger_config import bot_logger
 
 from ..audio import ensure_voice_connected
-from .. import settings
+from ..llm import LLMConfigurationError, ask_llm
 from ..storage import load_system_prompt, load_user_map
 
 
@@ -37,24 +37,19 @@ def register_tts_commands(bot, state, args):
         if author_name in user_map:
             system_prompt += f"\n\nThe user making this request is: {user_map[author_name]}"
 
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text},
+        ]
+
         try:
-            response = requests.post(
-                url="https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
-                json={
-                    "model": settings.OPENROUTER_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": text},
-                    ],
-                },
-            )
-            response.raise_for_status()
-            llm_response = response.json()["choices"][0]["message"]["content"]
+            llm_response = ask_llm(messages)
             await state.request_queue.put((ctx, llm_response))
             await ctx.send(f"Sent to LLM: '{text}'")
+        except LLMConfigurationError as exc:
+            await ctx.send(f"LLM configuration error: {exc}")
         except requests.exceptions.RequestException as exc:
-            await ctx.send(f"Error contacting OpenRouter API: {exc}")
+            await ctx.send(f"Error contacting LLM API: {exc}")
         except Exception as exc:
             await ctx.send(f"An error occurred: {exc}")
 

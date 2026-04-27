@@ -14,7 +14,7 @@ The bot combines two main workflows: a shared soundboard for playing and managin
 - Upload clips from attachments, direct audio URLs, YouTube, SoundCloud, and other supported media links.
 - Generate special mixed soundboard clips with `%sb all` and `%sb seq`.
 - Convert text to speech with Kokoro.
-- Ask an LLM through OpenRouter and speak the response in a voice channel.
+- Ask an LLM through OpenRouter or a local OpenAI-compatible server and speak the response in a voice channel.
 - Set custom join and leave sounds per user.
 
 See [docs/commands.md](docs/commands.md) for the full command reference.
@@ -25,7 +25,7 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
 - [FFmpeg](https://ffmpeg.org/) available in your `PATH`
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) available in your `PATH` for media-link uploads
 - A Discord bot token
-- An OpenRouter API key if you want to use `%ask`
+- An OpenRouter API key, or a local OpenAI-compatible LLM server, if you want to use `%ask`
 
 ## Setup
 
@@ -43,8 +43,17 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
    DISCORD_TOKEN="your_discord_bot_token"
 
    # Optional, only needed for %ask.
+   LLM_PROVIDER="openrouter"
+   LLM_TIMEOUT_SECONDS="60"
+
+   # OpenRouter provider settings.
    OPENROUTER_API_KEY="your_openrouter_api_key"
    OPENROUTER_MODEL="your_openrouter_model"
+
+   # Local provider settings. Use an OpenAI-compatible chat completions endpoint.
+   LOCAL_LLM_URL="http://localhost:1234/v1/chat/completions"
+   LOCAL_LLM_MODEL="your_local_model"
+   # LOCAL_LLM_API_KEY="optional_local_server_api_key"
 
    # Optional TTS settings.
    TTS_VOICE="af_bella"
@@ -76,6 +85,15 @@ python bot.py --no-tts
 ```
 
 Soundboard-only mode skips Kokoro TTS initialisation and disables `%say`, `%ask`, and `%replay`. Soundboard playback, uploads, lists, deletes, and join/leave sounds still work.
+
+## LLM Providers
+
+`%ask` uses the provider selected by `LLM_PROVIDER`.
+
+- `LLM_PROVIDER="openrouter"` sends prompts to OpenRouter. Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL`.
+- `LLM_PROVIDER="local"` sends prompts to a local OpenAI-compatible chat completions endpoint. Set `LOCAL_LLM_URL` and `LOCAL_LLM_MODEL`; set `LOCAL_LLM_API_KEY` only if your local server requires one.
+
+Many local inference tools can expose an OpenAI-compatible endpoint. For example, LM Studio commonly uses `http://localhost:1234/v1/chat/completions`, while other tools may use a different port or path.
 
 ## Local Data
 
