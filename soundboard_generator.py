@@ -42,7 +42,7 @@ def get_real_sounds():
 
 def get_real_sound_names():
     """Get list of real soundboard sound names (without extension)."""
-    return [os.path.splitext(os.path.basename(f))[0] for f in get_real_sounds()]
+    return [os.path.splitext(os.path.basename(f))[0].lower() for f in get_real_sounds()]
 
 
 def _ensure_generated_dir():

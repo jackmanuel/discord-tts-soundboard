@@ -269,6 +269,8 @@ async def ask(ctx, *, text: str):
 
 @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds]")
 async def soundboard(ctx, name: str = None, option: str = None):
+    if name:
+        name = name.lower()
     global voice_client
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
@@ -452,6 +454,8 @@ async def stop(ctx):
 
 @bot.command(name="addsound", aliases=["upload"], help="Upload a new sound to the soundboard. Usage: %addsound <name> [url] or %upload <name> [url]. Supports YouTube and SoundCloud.")
 async def upload_sound(ctx, name: str = None, url: str = None):
+    if name:
+        name = name.lower()
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     
@@ -674,6 +678,8 @@ async def list_sounds(ctx):
 
 @bot.command(name="deletesound", aliases=["rmsound"], help="Delete a sound from the soundboard (admin only). Usage: %deletesound <sound_name> or %rmsound <sound_name>")
 async def delete_sound(ctx, name: str):
+    if name:
+        name = name.lower()
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     bot_logger.info(f"Command: %deletesound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
@@ -704,6 +710,8 @@ async def delete_sound(ctx, name: str):
 
 @bot.command(name="setjoinsound", help="Set a sound to play when you join a voice channel. Usage: %setjoinsound <sound_name>")
 async def set_join_sound(ctx, name: str = None):
+    if name:
+        name = name.lower()
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     bot_logger.info(f"Command: %setjoinsound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
@@ -742,6 +750,8 @@ async def set_join_sound(ctx, name: str = None):
 
 @bot.command(name="setleavesound", help="Set a sound to play when you leave a voice channel. Usage: %setleavesound <sound_name>")
 async def set_leave_sound(ctx, name: str = None):
+    if name:
+        name = name.lower()
     channel_name = ctx.channel.name if ctx.channel else "DM"
     guild_name = ctx.guild.name if ctx.guild else "DM"
     bot_logger.info(f"Command: %setleavesound | User: {ctx.author.name} ({ctx.author.id}) | Guild: {guild_name} | Channel: {channel_name} | Sound: '{name}'")
