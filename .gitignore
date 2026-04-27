@@ -1,8 +1,14 @@
 # Personal files
 data/*.json
 .env
+.env.*
+!.env.example
 
 # Audio files
+*.flac
+*.m4a
+*.mp3
+*.ogg
 *.wav
 *.opus
 

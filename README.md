@@ -2,6 +2,10 @@
 
 A Discord audio bot with soundboard, text-to-speech, and LLM voice response features.
 
+## Project Status
+
+This is a personal/portfolio project built for a small Discord server. It is open source in case the implementation is useful to inspect or adapt, but it is not intended to compete with more mature, general-purpose Discord music, soundboard, or TTS bots.
+
 The bot combines two main workflows: a shared soundboard for playing and managing clips, and TTS commands for spoken messages or LLM responses in voice channels. Either side can be useful on its own, and soundboard features can still run without loading the TTS pipeline by starting the bot with `--no-tts`.
 
 ## Features
@@ -33,7 +37,7 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
    pip install -r requirements.txt
    ```
 
-2. Create a `.env` file in the project root:
+2. Copy `.env.example` to `.env` and fill in your own credentials:
 
    ```env
    DISCORD_TOKEN="your_discord_bot_token"
@@ -46,6 +50,7 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
    TTS_VOICE="af_bella"
    TTS_ACCENT="en-us"
    TTS_SPEED="1.0"
+   TTS_REPO_ID="hexgrad/Kokoro-82M"
 
    # Optional local data and logging settings.
    DATA_DIR="data"
@@ -82,3 +87,13 @@ Runtime user data is stored in `data/` by default:
 - `data/user_map.json`, if present, can provide friendly names for LLM prompts.
 
 Logs are written to `logs/` by default with daily rotation.
+
+The repository intentionally excludes personal soundboard clips, generated audio, cache files, logs, `.env`, `system_prompt.txt`, and user data. Add your own sound clips after setup.
+
+## Privacy Notes
+
+The bot logs Discord usernames, user IDs, guild/channel names, command names, uploaded filenames or URLs, and TTS/LLM prompt text. Keep the repository private until local logs and data files are excluded or cleaned, and avoid running it in servers where users have not agreed to that logging.
+
+## Licence
+
+This project is released under the MIT Licence. See [LICENSE](LICENSE).
