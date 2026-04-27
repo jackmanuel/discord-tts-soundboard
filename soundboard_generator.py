@@ -19,11 +19,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SOUNDBOARD_DIR = os.path.join(BASE_DIR, "soundboard")
 GENERATED_DIR = os.path.join(SOUNDBOARD_DIR, "generated")
 
-# Default durations
-DEFAULT_ALL_DURATION = 10  # seconds per sound for "all"
-DEFAULT_SEQ_DURATION = 1   # seconds per sound for "seq"
-
-# Volume boost for "all" mix (in dB). amix tends to reduce volume heavily.
+DEFAULT_ALL_DURATION = 10
+DEFAULT_SEQ_DURATION = 1
 ALL_VOLUME_BOOST_DB = 6
 
 
@@ -45,7 +42,6 @@ def get_real_sound_names():
 
 
 def _ensure_generated_dir():
-    """Ensure the generated directory exists."""
     os.makedirs(GENERATED_DIR, exist_ok=True)
 
 
@@ -87,18 +83,13 @@ def _generate_all_sound_sync(duration_key):
     output_path = _get_cached_path("all", duration_key)
     n = len(sound_files)
     
-    # Build ffmpeg command with amix
     cmd = ['ffmpeg', '-y']
     
-    # Add inputs with optional duration trim
     for f in sound_files:
         if duration_key != "full":
             cmd.extend(['-t', str(duration_key)])
         cmd.extend(['-i', f])
     
-    # Build the filter: amix all inputs, then boost volume
-    # amix with duration=longest so the full mix plays  
-    # Then apply volume boost to compensate for amix attenuation
     filter_parts = []
     filter_parts.append(
         f"amix=inputs={n}:duration=longest:normalize=0,volume={ALL_VOLUME_BOOST_DB}dB"
@@ -144,14 +135,11 @@ def _generate_seq_sound_sync(duration_key):
     n = len(sound_files)
     is_full = (duration_key == "full")
     
-    # Build ffmpeg command to concatenate sounds
     cmd = ['ffmpeg', '-y']
     
-    # Add all inputs
     for f in sound_files:
         cmd.extend(['-i', f])
     
-    # Build filter: optionally trim each, set pts, then concat
     filter_parts = []
     concat_inputs = []
     for i in range(n):
@@ -252,7 +240,7 @@ async def get_or_generate(sound_type, duration_key, ctx=None):
 
 
 async def regenerate_all_cached():
-    """Regenerate all currently cached variants. Called after sounds are added/deleted.
+    """Regenerate all currently cached variants.
     
     This only regenerates variants that already exist in the cache, not new ones.
     """
@@ -268,7 +256,6 @@ async def regenerate_all_cached():
     bot_logger.info(f"SoundboardGenerator: Regenerating {len(cached_files)} cached variants...")
     
     for filename in cached_files:
-        # Parse filename: type_duration.opus
         name_no_ext = os.path.splitext(filename)[0]
         parts = name_no_ext.split('_', 1)
         
@@ -279,7 +266,6 @@ async def regenerate_all_cached():
         sound_type = parts[0]
         duration_key = parts[1]
         
-        # Convert duration_key to int if it's not "full"
         if duration_key != "full":
             try:
                 duration_key = int(duration_key)
@@ -291,14 +277,12 @@ async def regenerate_all_cached():
             bot_logger.warning(f"SoundboardGenerator: Skipping unknown type '{sound_type}' in '{filename}'")
             continue
         
-        # Delete old file
         old_path = os.path.join(GENERATED_DIR, filename)
         try:
             os.remove(old_path)
         except OSError:
             pass
         
-        # Regenerate
         bot_logger.info(f"SoundboardGenerator: Regenerating {sound_type}_{duration_key}...")
         result = await generate_sound(sound_type, duration_key)
         

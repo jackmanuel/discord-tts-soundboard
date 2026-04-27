@@ -17,6 +17,7 @@ OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL")
 TTS_VOICE = os.getenv("TTS_VOICE", "af_bella")
 TTS_ACCENT = os.getenv("TTS_ACCENT", "en-us")
 TTS_SPEED = float(os.getenv("TTS_SPEED", 1.0))
+TTS_REPO_ID = os.getenv("TTS_REPO_ID", "hexgrad/Kokoro-82M")
 
 EMPTY_CHANNEL_TIMEOUT_SECONDS = 60
 TTS_SAMPLE_RATE = 24000

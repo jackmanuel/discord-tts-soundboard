@@ -66,7 +66,7 @@ async def initialize_tts(state, args):
         if settings.TTS_ACCENT and "gb" in settings.TTS_ACCENT.lower():
             lang_code = "b"
 
-        state.pipeline = KPipeline(lang_code=lang_code)
+        state.pipeline = KPipeline(lang_code=lang_code, repo_id=settings.TTS_REPO_ID)
         bot_logger.info(f"Kokoro TTS pipeline initialized (lang={lang_code}).")
     except Exception as exc:
         bot_logger.error(f"Failed to initialize Kokoro TTS: {exc}")
