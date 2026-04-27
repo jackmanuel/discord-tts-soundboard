@@ -40,7 +40,7 @@ See [docs/commands.md](docs/commands.md) for the full command reference.
 
    # Optional, only needed for %ask.
    OPENROUTER_API_KEY="your_openrouter_api_key"
-   OPENROUTER_MODEL="openai/gpt-4o-mini"
+   OPENROUTER_MODEL="your_openrouter_model"
 
    # Optional TTS settings.
    TTS_VOICE="af_bella"
