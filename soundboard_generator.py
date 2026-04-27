@@ -12,12 +12,11 @@ Generated files are stored in soundboard/generated/ with naming like:
 import os
 import asyncio
 import subprocess
-import glob
-import logging
 
-bot_logger = logging.getLogger("bot")
+from logger_config import bot_logger
 
-SOUNDBOARD_DIR = "soundboard"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SOUNDBOARD_DIR = os.path.join(BASE_DIR, "soundboard")
 GENERATED_DIR = os.path.join(SOUNDBOARD_DIR, "generated")
 
 # Default durations
@@ -232,23 +231,23 @@ async def get_or_generate(sound_type, duration_key, ctx=None):
     """
     cached_path = _get_cached_path(sound_type, duration_key)
     status_msg = None
-    
+    duration_display = "full" if duration_key == "full" else f"{duration_key}s"
+
     if os.path.exists(cached_path):
         bot_logger.info(f"SoundboardGenerator: Cache hit for {sound_type}_{duration_key}")
         return cached_path, None
-    
-    # Not cached - notify user and generate
+
     bot_logger.info(f"SoundboardGenerator: Cache miss for {sound_type}_{duration_key}, generating...")
     if ctx:
-        status_msg = await ctx.send(f"Generating {sound_type} sound ({duration_key}s)... ⏳")
-    
+        status_msg = await ctx.send(f"Generating {sound_type} sound ({duration_display})...")
+
     filepath = await generate_sound(sound_type, duration_key)
-    
+
     if filepath and status_msg:
-        await status_msg.edit(content=f"Generated {sound_type} sound ({duration_key}s) ✅")
+        await status_msg.edit(content=f"Generated {sound_type} sound ({duration_display})")
     elif not filepath and status_msg:
-        await status_msg.edit(content=f"Failed to generate {sound_type} sound ❌")
-    
+        await status_msg.edit(content=f"Failed to generate {sound_type} sound")
+
     return filepath, status_msg
 
 

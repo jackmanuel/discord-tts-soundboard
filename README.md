@@ -60,6 +60,7 @@ The Text-to-Speech functionality of this bot is powered by [Kokoro](https://gith
     TTS_VOICE="af_bella"
     TTS_ACCENT="en-us"
     TTS_SPEED="1.0"
+    DATA_DIR="data"
     
     # Logging configuration
     LOG_LEVEL="INFO"
@@ -73,6 +74,7 @@ The Text-to-Speech functionality of this bot is powered by [Kokoro](https://gith
     - `TTS_VOICE`: The Kokoro voice to use for TTS. Defaults to `af_bella`.
     - `TTS_ACCENT`: The accent to use for TTS (`en-us` for American, `en-gb` for British). Defaults to `en-us`.
     - `TTS_SPEED`: The speed of the TTS playback. Defaults to `1.0`.
+    - `DATA_DIR`: Directory for personal/runtime JSON files such as `user_map.json` and `user_sounds.json`. Defaults to `data`.
     - `LOG_LEVEL`: The logging level (DEBUG, INFO, WARNING, ERROR). Defaults to `INFO`.
     - `LOG_DIR`: Directory where log files will be stored. Defaults to `logs`.
     - `LOG_RETENTION_DAYS`: Number of days to keep log files before automatic cleanup. Defaults to `7`.
@@ -94,6 +96,17 @@ The Text-to-Speech functionality of this bot is powered by [Kokoro](https://gith
 3.  **Invite the bot** to your Discord server.
 
 4.  **Use the commands** in a text channel while connected to a voice channel.
+
+## Project Structure
+
+- `bot.py`: Small entrypoint that parses CLI flags and starts the bot.
+- `tts_bot/app.py`: Bot construction, logging setup, TTS initialization, and background task startup.
+- `tts_bot/audio.py`: Voice connection helpers, TTS cache generation, and audio queue worker.
+- `tts_bot/events.py`: Discord event handlers.
+- `tts_bot/commands/`: Discord command groups for TTS/LLM, soundboard, and join/leave sound preferences.
+- `tts_bot/soundboard_uploads.py`: URL, yt-dlp, and direct-file download handling for soundboard uploads.
+- `tts_bot/storage.py`: Runtime data loading/saving for personal JSON files.
+- `data/`: Local personal/runtime JSON data. JSON files in this folder are ignored by Git.
 
 ### Soundboard Management
 
@@ -127,6 +140,8 @@ The bot supports custom join and leave sounds for each user:
 - **Checking Your Sounds**: Use `%mysounds` to see your currently configured join and leave sounds.
 
 These settings are saved per user and will persist across bot restarts. The sounds are played automatically when you join or leave a voice channel.
+
+Personal JSON data is stored in the `data/` directory by default. User sound preferences are written to `data/user_sounds.json`, and optional username mappings are read from `data/user_map.json`.
 
 ## Logging
 

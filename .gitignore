@@ -1,6 +1,5 @@
 # Personal files
-user_map.json
-user_sounds.json
+data/*.json
 .env
 
 # Audio files

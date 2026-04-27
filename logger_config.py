@@ -1,16 +1,17 @@
 import logging
 import logging.handlers
 import os
-import glob
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Get logging configuration from environment variables
-LOG_LEVEL = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper())
-LOG_DIR = os.getenv("LOG_DIR", "logs")
+LOG_LEVEL = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+LOG_DIR = os.getenv("LOG_DIR", os.path.join(BASE_DIR, "logs"))
 LOG_RETENTION_DAYS = int(os.getenv("LOG_RETENTION_DAYS", "7"))
 
 
@@ -23,7 +24,7 @@ def cleanup_old_logs():
     deleted_count = 0
     
     # Walk through all subdirectories in the log directory
-    for root, dirs, files in os.walk(LOG_DIR):
+    for root, _dirs, files in os.walk(LOG_DIR):
         for filename in files:
             # Match both .log files and rotated files like .log.2025-10-17
             if '.log' not in filename:
@@ -72,7 +73,7 @@ def rotate_log_if_needed(log_file):
             else:
                 # If rotated file exists, just remove the old log to avoid duplicates
                 os.remove(log_file)
-    except (OSError, IOError) as e:
+    except (OSError, IOError):
         # If we can't rotate, just continue - the handler will append to the existing file
         pass
 
@@ -83,7 +84,7 @@ def setup_logger(name, log_file, level=LOG_LEVEL, console_output=True):
     # Create logs directory if it doesn't exist
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        os.makedirs(log_dir, exist_ok=True)
     
     # Rotate the log file if it's from a previous day (handles bot not running at midnight)
     rotate_log_if_needed(log_file)
