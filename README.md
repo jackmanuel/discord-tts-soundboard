@@ -95,6 +95,8 @@ Soundboard-only mode skips Kokoro TTS initialisation and disables `%say`, `%ask`
 
 Many local inference tools can expose an OpenAI-compatible endpoint. For example, LM Studio commonly uses `http://localhost:1234/v1/chat/completions`, while other tools may use a different port or path.
 
+Use `%llmstatus` in Discord to show the selected provider, model, endpoint, and whether a test request succeeds.
+
 ## Local Data
 
 Uploaded sounds are stored as `.opus` files in `soundboard/`.

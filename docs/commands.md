@@ -44,12 +44,13 @@ Join and leave sound settings are saved per user in `data/user_sounds.json`.
 
 ## TTS And LLM Commands
 
-These commands are disabled when the bot is started with `--no-tts`.
+Audio playback commands in this section are disabled when the bot is started with `--no-tts`. `%llmstatus` remains available for diagnostics.
 
 | Command | Description |
 | --- | --- |
 | `%say <text>` | Converts text to speech and plays it in your voice channel. |
 | `%ask <text>` | Sends text to the configured LLM provider, then speaks the response. |
+| `%llmstatus` | Shows the configured LLM provider, model, endpoint, and connection status. |
 | `%replay` or `%repeat` | Replays the most recent TTS audio file. |
 
 Kokoro powers local TTS. `%ask` also requires LLM provider settings in `.env`.

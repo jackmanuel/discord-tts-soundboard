@@ -7,11 +7,51 @@ import requests
 from logger_config import bot_logger
 
 from ..audio import ensure_voice_connected
-from ..llm import LLMConfigurationError, ask_llm
+from ..llm import LLMConfigurationError, ask_llm, check_llm_status, describe_llm_config
 from ..storage import load_system_prompt, load_user_map
 
 
 def register_tts_commands(bot, state, args):
+    @bot.command(name="llmstatus", help="Show configured LLM provider status. Usage: %llmstatus")
+    async def llmstatus(ctx):
+        channel_name = ctx.channel.name if ctx.channel else "DM"
+        guild_name = ctx.guild.name if ctx.guild else "DM"
+        bot_logger.info(
+            f"Command: %llmstatus | User: {ctx.author.name} ({ctx.author.id}) | "
+            f"Guild: {guild_name} | Channel: {channel_name}"
+        )
+
+        try:
+            config = describe_llm_config()
+        except LLMConfigurationError as exc:
+            await ctx.send(f"LLM configuration error: {exc}")
+            return
+
+        lines = [
+            "LLM status",
+            f"Provider: {config['provider']}",
+            f"Model: {config['model']}",
+            f"URL: {config['url']}",
+            f"API key configured: {'yes' if config['api_key_configured'] else 'no'}",
+            f"Timeout: {config['timeout_seconds']} seconds",
+            "Endpoint check: checking...",
+        ]
+        status_message = await ctx.send("\n".join(lines))
+
+        try:
+            check_llm_status()
+            lines[-1] = "Endpoint check: ok"
+            await status_message.edit(content="\n".join(lines))
+        except LLMConfigurationError as exc:
+            lines[-1] = f"Endpoint check: configuration error ({exc})"
+            await status_message.edit(content="\n".join(lines))
+        except requests.exceptions.RequestException as exc:
+            lines[-1] = f"Endpoint check: failed ({exc})"
+            await status_message.edit(content="\n".join(lines))
+        except Exception as exc:
+            lines[-1] = f"Endpoint check: failed ({exc})"
+            await status_message.edit(content="\n".join(lines))
+
     @bot.command(name="ask", help="Ask a question to the LLM and get a spoken response. Usage: %ask <your question>")
     async def ask(ctx, *, text: str):
         channel_name = ctx.channel.name if ctx.channel else "DM"
