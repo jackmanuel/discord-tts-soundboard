@@ -46,7 +46,7 @@ def create_bot(args):
     intents.message_content = True
     intents.voice_states = True
 
-    bot = commands.Bot(command_prefix="%", intents=intents)
+    bot = commands.Bot(command_prefix="%", intents=intents, case_insensitive=True)
     state = BotState()
 
     register_events(bot, state, args, initialize_tts, start_background_tasks)
