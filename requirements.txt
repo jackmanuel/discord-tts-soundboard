@@ -1,4 +1,6 @@
 discord.py
+# discord.py 2.7.1 uses the davey 0.1 API; 0.2 introduces breaking changes.
+davey==0.1.7
 requests
 python-dotenv
 kokoro
