@@ -39,7 +39,7 @@ def register_tts_commands(bot, state, args):
         status_message = await ctx.send("\n".join(lines))
 
         try:
-            check_llm_status()
+            await asyncio.to_thread(check_llm_status)
             lines[-1] = "Endpoint check: ok"
             await status_message.edit(content="\n".join(lines))
         except LLMConfigurationError as exc:
@@ -83,7 +83,7 @@ def register_tts_commands(bot, state, args):
         ]
 
         try:
-            llm_response = ask_llm(messages)
+            llm_response = await asyncio.to_thread(ask_llm, messages)
             await state.request_queue.put((ctx, llm_response))
             await ctx.send(f"Sent to LLM: '{text}'")
         except LLMConfigurationError as exc:
