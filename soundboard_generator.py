@@ -3,14 +3,15 @@ Soundboard Generator Module
 
 Handles generation and caching of special soundboard sounds:
 - "all": All sounds mixed/overlaid simultaneously (with volume boost)
-- "seq": All sounds played sequentially (trimmed to N seconds each)
+- "seq": All sounds played sequentially (trimmed to N seconds each, including fractional seconds down to 0.1s)
 
 Generated files are stored in soundboard/generated/ with naming like:
-  all_10.opus, all_5.opus, all_full.opus, seq_1.opus, seq_2.opus, etc.
+  all_10.opus, all_0.5.opus, all_full.opus, seq_1.opus, seq_0.1.opus, etc.
 """
 
 import os
 import asyncio
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import subprocess
 
 from logger_config import bot_logger
@@ -21,7 +22,40 @@ GENERATED_DIR = os.path.join(SOUNDBOARD_DIR, "generated")
 
 DEFAULT_ALL_DURATION = 10
 DEFAULT_SEQ_DURATION = 1
+MIN_DURATION = 0.1
 ALL_VOLUME_BOOST_DB = 6
+
+
+def parse_duration_key(value):
+    """Parse and normalize a duration key to 'full' or a canonical tenth-second string.
+
+    Accepts 'full' (case-insensitive) or a finite number >= MIN_DURATION,
+    rounded to the nearest 0.1 seconds (half-up). Whole numbers normalize
+    without a decimal point (e.g. '1.0' -> '1') to preserve compatibility
+    with existing cached filenames like all_10.opus.
+    """
+    if isinstance(value, str) and value.strip().lower() == "full":
+        return "full"
+
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid duration: {value}")
+
+    try:
+        decimal_value = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"Invalid duration: {value}") from exc
+
+    if not decimal_value.is_finite():
+        raise ValueError(f"Duration must be finite: {value}")
+
+    if decimal_value < Decimal(str(MIN_DURATION)):
+        raise ValueError(f"Duration must be at least {MIN_DURATION} seconds.")
+
+    rounded = decimal_value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
+    normalized = format(rounded, "f")
+    if "." in normalized:
+        normalized = normalized.rstrip("0").rstrip(".")
+    return normalized
 
 
 def get_real_sounds():
@@ -50,9 +84,10 @@ def _get_cached_path(sound_type, duration_key):
     
     Args:
         sound_type: "all" or "seq"
-        duration_key: integer seconds or "full"
+        duration_key: duration in seconds (int, float, or numeric string) or "full"
     """
-    return os.path.join(GENERATED_DIR, f"{sound_type}_{duration_key}.opus")
+    normalized_key = parse_duration_key(duration_key)
+    return os.path.join(GENERATED_DIR, f"{sound_type}_{normalized_key}.opus")
 
 
 def get_cached_variants():
@@ -71,8 +106,9 @@ def _generate_all_sound_sync(duration_key):
     """Generate the 'all' sound synchronously (overlay all sounds).
     
     Args:
-        duration_key: integer seconds or "full" for no trimming
+        duration_key: duration in seconds (down to MIN_DURATION) or "full" for no trimming
     """
+    duration_key = parse_duration_key(duration_key)
     _ensure_generated_dir()
     sound_files = get_real_sounds()
     
@@ -122,8 +158,9 @@ def _generate_seq_sound_sync(duration_key):
     """Generate the 'seq' sound synchronously (concatenate all sounds sequentially).
     
     Args:
-        duration_key: integer seconds per sound, or "full" for no trimming
+        duration_key: duration in seconds per sound (down to MIN_DURATION), or "full" for no trimming
     """
+    duration_key = parse_duration_key(duration_key)
     _ensure_generated_dir()
     sound_files = get_real_sounds()
     
@@ -149,9 +186,8 @@ def _generate_seq_sound_sync(duration_key):
                 f"[{i}:a]asetpts=PTS-STARTPTS[{label}]"
             )
         else:
-            per_sound_duration = int(duration_key)
             filter_parts.append(
-                f"[{i}:a]atrim=0:{per_sound_duration},asetpts=PTS-STARTPTS[{label}]"
+                f"[{i}:a]atrim=0:{duration_key},asetpts=PTS-STARTPTS[{label}]"
             )
         concat_inputs.append(f"[{label}]")
     
@@ -190,11 +226,12 @@ async def generate_sound(sound_type, duration_key):
     
     Args:
         sound_type: "all" or "seq"
-        duration_key: integer seconds or "full"
+        duration_key: duration in seconds (down to MIN_DURATION) or "full"
     
     Returns:
         Path to generated file, or None on failure.
     """
+    duration_key = parse_duration_key(duration_key)
     loop = asyncio.get_event_loop()
     
     if sound_type == "all":
@@ -211,12 +248,13 @@ async def get_or_generate(sound_type, duration_key, ctx=None):
     
     Args:
         sound_type: "all" or "seq"
-        duration_key: integer seconds or "full"
+        duration_key: duration in seconds (down to MIN_DURATION) or "full"
         ctx: Discord context (optional, for sending status messages)
     
     Returns:
         Tuple of (filepath, status_msg_or_None)
     """
+    duration_key = parse_duration_key(duration_key)
     cached_path = _get_cached_path(sound_type, duration_key)
     status_msg = None
     duration_display = "full" if duration_key == "full" else f"{duration_key}s"
@@ -266,12 +304,11 @@ async def regenerate_all_cached():
         sound_type = parts[0]
         duration_key = parts[1]
         
-        if duration_key != "full":
-            try:
-                duration_key = int(duration_key)
-            except ValueError:
-                bot_logger.warning(f"SoundboardGenerator: Skipping invalid duration in '{filename}'")
-                continue
+        try:
+            duration_key = parse_duration_key(duration_key)
+        except ValueError:
+            bot_logger.warning(f"SoundboardGenerator: Skipping invalid duration in '{filename}'")
+            continue
         
         if sound_type not in ("all", "seq"):
             bot_logger.warning(f"SoundboardGenerator: Skipping unknown type '{sound_type}' in '{filename}'")

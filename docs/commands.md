@@ -7,8 +7,8 @@ The bot uses `%` as its command prefix. Most playback commands require you to be
 | Command | Description |
 | --- | --- |
 | `%sb <sound_name>` or `%soundboard <sound_name>` | Plays a saved sound. |
-| `%sb all [seconds\|full]` | Plays a generated clip using all available sounds. |
-| `%sb seq [seconds\|full]` | Plays a generated sequence of available sounds. |
+| `%sb all [seconds\|full]` | Plays a generated clip using all available sounds (supports tenths of a second down to `0.1`; rounded to nearest `0.1`s). |
+| `%sb seq [seconds\|full]` | Plays a generated sequence of available sounds (supports tenths of a second down to `0.1`; rounded to nearest `0.1`s). |
 | `%listsounds` or `%ls` | Lists saved sounds, plus the special `all` and `seq` modes. |
 | `%addsound <name> [url]` or `%upload <name> [url]` | Adds a sound from an attachment or URL. |
 | `%deletesound <name>` or `%rmsound <name>` | Deletes a sound. Requires administrator permissions. |

@@ -21,6 +21,18 @@ def _format_sound_choices(available_sounds):
     return ""
 
 
+def _format_playback_duration(total_seconds):
+    minutes = int(total_seconds) // 60
+    if minutes > 0:
+        seconds = int(total_seconds) % 60
+        return f"{minutes}m {seconds}s"
+    if total_seconds < 10:
+        rounded = round(total_seconds, 1)
+        seconds_str = f"{rounded:.1f}".rstrip("0").rstrip(".")
+        return f"{seconds_str}s"
+    return f"{int(total_seconds)}s"
+
+
 async def _play_generated_sound(ctx, state, name, duration_key, filepath):
     if state.voice_client is None or not state.voice_client.is_connected():
         voice_channel = ctx.author.voice.channel
@@ -39,12 +51,8 @@ async def _play_generated_sound(ctx, state, name, duration_key, filepath):
         )
         if probe.returncode == 0 and probe.stdout.strip():
             total_seconds = float(probe.stdout.strip())
-            minutes = int(total_seconds) // 60
-            seconds = int(total_seconds) % 60
-            if minutes > 0:
-                await ctx.send(f"Playing **{name}** ({duration_display}) - {minutes}m {seconds}s")
-            else:
-                await ctx.send(f"Playing **{name}** ({duration_display}) - {seconds}s")
+            formatted_duration = _format_playback_duration(total_seconds)
+            await ctx.send(f"Playing **{name}** ({duration_display}) - {formatted_duration}")
     except Exception:
         pass
 
@@ -66,22 +74,22 @@ def _parse_special_duration(name, option):
         usage = "%sb seq [seconds|full]"
 
     if option is None:
-        return default_duration, None
-    if option.lower() == "full":
+        return soundboard_generator.parse_duration_key(default_duration), None
+    if option.strip().lower() == "full":
         return "full", None
 
     try:
-        duration_key = int(option)
-    except ValueError:
+        duration_key = soundboard_generator.parse_duration_key(option)
+    except ValueError as exc:
+        if "at least" in str(exc):
+            return None, str(exc)
         return None, f"Invalid option. Usage: `{usage}`"
 
-    if duration_key < 1:
-        return None, "Duration must be at least 1 second."
     return duration_key, None
 
 
 def register_soundboard_commands(bot, state):
-    @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds]")
+    @bot.command(name="soundboard", aliases=["sb"], help="Play a sound from the soundboard. Usage: %sb <sound_name> | %sb all [seconds|full] | %sb seq [seconds|full]")
     async def soundboard(ctx, name: str = None, option: str = None):
         if name:
             name = name.lower()
